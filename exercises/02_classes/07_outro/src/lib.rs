@@ -17,9 +17,56 @@
 // returns the discounted price.
 // `SeasonalDiscount` should raise an `ExpiredDiscount` exception if `apply` is called but
 // the current date is outside the discount period.
+use pyo3::exceptions::{PyException, PyValueError};
 use pyo3::prelude::*;
+use pyo3::types::PyDateTime;
 
+#[pyclass(subclass)]
+struct Discount {
+    #[pyo3(get)]
+    percentage: f64,
+}
+
+#[pymethods]
+impl Discount {
+    #[new]
+    fn new(percentage: f64) -> PyResult<Self> {
+        if (percentage < 0.0) || (percentage > 1.0) {
+            Err(PyValueError::new_err("Percentage must be between 0 and 1"))
+        } else {
+            Ok(Discount { percentage })
+        }
+    }
+
+    fn apply(&self, price: f64) -> f64 {
+        price * (1.0 - self.percentage)
+    }
+}
+
+#[pyclass(extends=Discount)]
+struct SeasonalDiscount {
+    #[pyo3(get)]
+    to: Py<PyDateTime>,
+
+    #[pyo3(get)]
+    from_: Py<PyDateTime>,
+}
+
+#[pyclass(extends=Discount)]
+struct CappedDiscount {
+    #[pyo3(get)]
+    cap: f64,
+}
+
+// https://pyo3.rs/v0.23.4/exception.html
+pyo3::create_exception!(outro2, ExpiredDiscount, PyException);
+
+// We must accept `py` first, and `m` after that
 #[pymodule]
-fn outro2(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn outro2(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<Discount>()?;
+    m.add_class::<SeasonalDiscount>()?;
+    m.add_class::<CappedDiscount>()?;
+    m.add("ExpiredDiscount", py.get_type::<ExpiredDiscount>())?;
     Ok(())
 }
