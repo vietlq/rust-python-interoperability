@@ -1,5 +1,7 @@
 use pyo3::prelude::*;
 
+// https://rust-exercises.com/rust-python-interop/02_classes/00_pyclass.html
+
 // TODO: Create a new Python class named `ShoppingOrder` with the following attributes:
 //  - `price` (positive integer)
 //  - `quantity` (positive integer)

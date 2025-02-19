@@ -1,14 +1,16 @@
 // TODO: Add a `total` method to the `ShoppingOrder` class that returns the total cost of the order.
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::PyLong;
+use pyo3::types::PyInt;
 
 #[pyclass]
 struct ShoppingOrder {
     #[pyo3(get)]
     name: String,
+
     #[pyo3(get)]
     price: u64,
+
     #[pyo3(get, set)]
     quantity: u64,
 }
@@ -20,7 +22,7 @@ impl ShoppingOrder {
     /// - `name` is an empty string or just whitespace.
     /// - `price` is zero or negative.
     /// - `quantity` is zero or negative.
-    fn new(name: String, price: Bound<'_, PyLong>, quantity: Bound<'_, PyLong>) -> PyResult<Self> {
+    fn new(name: String, price: Bound<'_, PyInt>, quantity: Bound<'_, PyInt>) -> PyResult<Self> {
         let price = price
             .extract()
             .map_err(|_| PyValueError::new_err("Price must be an non-negative integer"))?;
@@ -44,6 +46,11 @@ impl ShoppingOrder {
             price,
             quantity,
         })
+    }
+
+    // Consider using Bound<'_, PyInt> so that we can handle overflow
+    fn total(&self) -> u64 {
+        self.price * self.quantity
     }
 }
 

@@ -2,6 +2,8 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyInt;
 
+// https://rust-exercises.com/rust-python-interop/02_classes/01_constructors.html
+
 // TODO: Add a `__new__` constructor to the `ShoppingOrder` class that takes the following arguments:
 //  - `name` (non-empty string)
 //  - `price` (non-zero integer)
@@ -20,6 +22,15 @@ struct ShoppingOrder {
     quantity: u64,
 }
 
+/**
+ * Signature for `new`
+
+Everything we learned about arguments in the context of #[pyfunction]s
+applies to constructors as well.
+In terms of output type, you can return Self if the
+constructor is infallible, or PyResult<Self> if it can fail.
+ */
+
 #[pymethods]
 impl ShoppingOrder {
     #[new]
@@ -33,11 +44,19 @@ impl ShoppingOrder {
         let res_quantity = quantity.extract::<u64>();
 
         match (res_price, res_quantity) {
-            (Ok(price), Ok(quantity)) => Ok(ShoppingOrder {
-                name,
-                price,
-                quantity,
-            }),
+            (Ok(price), Ok(quantity)) => {
+                if price < 1 || quantity < 1 {
+                    Err(PyValueError::new_err(
+                        "price and quantity must be positive integers",
+                    ))
+                } else {
+                    Ok(ShoppingOrder {
+                        name,
+                        price,
+                        quantity,
+                    })
+                }
+            }
             _ => Err(PyValueError::new_err(
                 "price and quantity must be of the type u64",
             )),
