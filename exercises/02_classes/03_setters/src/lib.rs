@@ -4,7 +4,9 @@ use pyo3::prelude::*;
 #[pyclass]
 struct Item {
     name: String,
+
     price: u64,
+
     #[pyo3(get)]
     n_visits: u64,
 }
@@ -18,6 +20,20 @@ impl Item {
             price,
             n_visits: 0,
         }
+    }
+
+    #[getter]
+    fn name(&mut self) -> String {
+        self.n_visits += 1;
+
+        self.name.clone()
+    }
+
+    #[getter]
+    fn price(&mut self) -> u64 {
+        self.n_visits += 1;
+
+        self.price
     }
 }
 
