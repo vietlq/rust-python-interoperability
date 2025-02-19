@@ -5,33 +5,55 @@
 
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::PyList;
+use pyo3::types::{PyAny, PyList};
 
 #[pyfunction]
 fn max_k<'py>(
-    input_list: Vec<u64>,
-    num_to_take: u64,
+    item: Bound<'py, PyAny>,
+    num_to_take: usize,
     py: Python<'py>,
 ) -> PyResult<Bound<'py, PyList>> {
-    let list_len = input_list.len() as u64;
+    let the_pylist_conv = item.downcast_into::<PyList>();
 
-    if num_to_take == 0 {
-        let empty_vec: Vec<u64> = vec![];
-        Ok(PyList::new(py, empty_vec)?)
-    } else if num_to_take > list_len {
-        Err(PyValueError::new_err(
-            "The list has fewer elements than requested",
-        ))
-    } else {
-        let mut input_list = input_list.clone();
-        input_list.sort_by(|a, b| a.cmp(b));
-        input_list.reverse();
+    match the_pylist_conv {
+        Err(_) => Err(PyTypeError::new_err(
+            "Expected a list of unsigned integer up to 128 bits",
+        )),
+        Ok(the_pylist) => {
+            let mut input_list: Vec<u128> = vec![];
+            let mut valid_subitems = true;
 
-        if num_to_take == list_len {
-            Ok(PyList::new(py, input_list)?)
-        } else {
-            let (left, _right) = input_list.split_at(num_to_take as usize);
-            Ok(PyList::new(py, left.to_vec())?)
+            for subitem in the_pylist {
+                match subitem.extract() {
+                    Ok(num) => input_list.push(num),
+                    _ => valid_subitems = false,
+                }
+            }
+
+            if !valid_subitems {
+                Err(PyTypeError::new_err(
+                    "Some elements in the list are not unsigned integer values up to 128 bits",
+                ))
+            } else {
+                if num_to_take == 0 {
+                    let empty_vec: Vec<u128> = vec![];
+                    Ok(PyList::new(py, empty_vec)?)
+                } else if num_to_take > input_list.len() {
+                    Err(PyValueError::new_err(
+                        "The list has fewer elements than requested",
+                    ))
+                } else {
+                    input_list.sort_by(|a, b| a.cmp(b));
+                    input_list.reverse();
+
+                    if num_to_take == input_list.len() {
+                        Ok(PyList::new(py, input_list)?)
+                    } else {
+                        let (left, _right) = input_list.split_at(num_to_take as usize);
+                        Ok(PyList::new(py, left.to_vec())?)
+                    }
+                }
+            }
         }
     }
 }
