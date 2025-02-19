@@ -13,7 +13,8 @@ fn max_k<'py>(
     num_to_take: u64,
     py: Python<'py>,
 ) -> PyResult<Bound<'py, PyList>> {
-    if num_to_take > (input_list.len() as u64) {
+    let list_len = (input_list.len() as u64);
+    if num_to_take > list_len {
         Err(PyValueError::new_err(
             "The list has fewer elements than requested",
         ))
@@ -22,7 +23,16 @@ fn max_k<'py>(
             let empty_vec: Vec<u64> = vec![];
             Ok(PyList::new(py, empty_vec)?)
         } else {
-            Ok(PyList::new(py, input_list)?)
+            let mut input_list = input_list.clone();
+            input_list.sort_by(|a, b| a.cmp(b));
+            input_list.reverse();
+
+            if num_to_take == list_len {
+                Ok(PyList::new(py, input_list)?)
+            } else {
+                let (left, _right) = input_list.split_at(num_to_take as usize);
+                Ok(PyList::new(py, left.to_vec())?)
+            }
         }
     }
 }
