@@ -3,7 +3,8 @@ use pyo3::prelude::*;
 
 #[pyfunction]
 fn it_works() -> bool {
-    todo!()
+    // Yes it works!
+    true
 }
 
 /// A Python module implemented in Rust.
