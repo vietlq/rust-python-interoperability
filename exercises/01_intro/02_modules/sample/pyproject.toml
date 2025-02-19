@@ -2,7 +2,7 @@
 name = "modules_sample"
 version = "0.1.0"
 dependencies = [
-  "modules",
+  "modules", # This is from 02_modules/pyproject.toml:[package.name] = "modules"
 ]
 readme = "README.md"
 requires-python = ">=3.13"
