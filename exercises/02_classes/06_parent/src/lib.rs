@@ -79,6 +79,12 @@ impl AccountWithHistory {
         PyClassInitializer::from(account).add_subclass(account_with_history)
     }
 
+    // NOTE: When overriding set_balance, we have to repeat the getter for balance
+    #[getter]
+    fn balance(self_: PyRef<'_, Self>) -> i64 {
+        self_.as_super().balance
+    }
+
     #[setter]
     fn set_balance(mut self_: PyRefMut<'_, Self>, new_balance: i64) {
         let parent = self_.as_super();
