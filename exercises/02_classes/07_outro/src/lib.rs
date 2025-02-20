@@ -78,13 +78,15 @@ impl SeasonalDiscount {
         from_: Py<PyDateTime>,
         to: Py<PyDateTime>,
     ) -> PyResult<PyClassInitializer<Self>> {
-        match validate_seasonal_dates(&from_, &to) {
+        match Discount::new(percentage) {
             Err(x) => Err(x),
-            Ok(()) => {
-                let parent = Discount { percentage };
-                let seasonal_discount = SeasonalDiscount { from_, to };
-                Ok(PyClassInitializer::from(parent).add_subclass(seasonal_discount))
-            }
+            Ok(parent) => match validate_seasonal_dates(&from_, &to) {
+                Err(x) => Err(x),
+                Ok(()) => {
+                    let seasonal_discount = SeasonalDiscount { from_, to };
+                    Ok(PyClassInitializer::from(parent).add_subclass(seasonal_discount))
+                }
+            },
         }
     }
 
@@ -113,13 +115,15 @@ struct CappedDiscount {
 impl CappedDiscount {
     #[new]
     fn new(percentage: f64, cap: f64) -> PyResult<PyClassInitializer<Self>> {
-        match validate_cap(cap) {
+        match Discount::new(percentage) {
             Err(x) => Err(x),
-            Ok(()) => {
-                let parent = Discount { percentage };
-                let capped_discount = CappedDiscount { cap };
-                Ok(PyClassInitializer::from(parent).add_subclass(capped_discount))
-            }
+            Ok(parent) => match validate_cap(cap) {
+                Err(x) => Err(x),
+                Ok(()) => {
+                    let capped_discount = CappedDiscount { cap };
+                    Ok(PyClassInitializer::from(parent).add_subclass(capped_discount))
+                }
+            },
         }
     }
 
@@ -147,7 +151,7 @@ impl CappedDiscount {
 }
 
 fn validate_cap(cap: f64) -> PyResult<()> {
-    if cap < 0.0 {
+    if cap <= 0.0 {
         Err(PyValueError::new_err("Cap must be a positive number"))
     } else {
         Ok(())
