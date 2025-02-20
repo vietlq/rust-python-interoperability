@@ -110,6 +110,17 @@ impl CappedDiscount {
         };
         price - the_discount
     }
+
+    #[setter]
+    fn set_cap(mut self_: PyRefMut<'_, Self>, cap: f64) -> PyResult<()> {
+        match validate_cap(cap) {
+            Err(x) => Err(x),
+            Ok(()) => {
+                self_.cap = cap;
+                Ok(())
+            }
+        }
+    }
 }
 
 fn validate_cap(cap: f64) -> PyResult<()> {
