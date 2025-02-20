@@ -89,10 +89,34 @@ struct CappedDiscount {
 #[pymethods]
 impl CappedDiscount {
     #[new]
-    fn new(percentage: f64, cap: f64) -> PyClassInitializer<Self> {
-        let parent = Discount { percentage };
-        let capped_discount = CappedDiscount { cap };
-        PyClassInitializer::from(parent).add_subclass(capped_discount)
+    fn new(percentage: f64, cap: f64) -> PyResult<PyClassInitializer<Self>> {
+        match validate_cap(cap) {
+            Err(x) => Err(x),
+            Ok(()) => {
+                let parent = Discount { percentage };
+                let capped_discount = CappedDiscount { cap };
+                Ok(PyClassInitializer::from(parent).add_subclass(capped_discount))
+            }
+        }
+    }
+
+    fn apply(self_: PyRef<'_, Self>, price: f64) -> f64 {
+        let percentage = self_.as_super().percentage;
+        let perc_discount = price * percentage;
+        let the_discount = if perc_discount > self_.cap {
+            self_.cap
+        } else {
+            perc_discount
+        };
+        price - the_discount
+    }
+}
+
+fn validate_cap(cap: f64) -> PyResult<()> {
+    if cap < 0.0 {
+        Err(PyValueError::new_err("Cap must be a positive number"))
+    } else {
+        Ok(())
     }
 }
 
