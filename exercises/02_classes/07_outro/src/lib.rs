@@ -73,11 +73,34 @@ struct SeasonalDiscount {
 #[pymethods]
 impl SeasonalDiscount {
     #[new]
-    fn new(percentage: f64, from_: Py<PyDateTime>, to: Py<PyDateTime>) -> PyClassInitializer<Self> {
-        let parent = Discount { percentage };
-        let seasonal_discount = SeasonalDiscount { from_, to };
-        PyClassInitializer::from(parent).add_subclass(seasonal_discount)
+    fn new<'py>(
+        percentage: f64,
+        from_: Py<PyDateTime>,
+        to: Py<PyDateTime>,
+    ) -> PyResult<PyClassInitializer<Self>> {
+        match validate_seasonal_dates(&from_, &to) {
+            Err(x) => Err(x),
+            Ok(()) => {
+                let parent = Discount { percentage };
+                let seasonal_discount = SeasonalDiscount { from_, to };
+                Ok(PyClassInitializer::from(parent).add_subclass(seasonal_discount))
+            }
+        }
     }
+
+    #[setter]
+    fn set_from_(mut self_: PyRefMut<'_, Self>, from_: Py<PyDateTime>) -> PyResult<()> {
+        Ok(())
+    }
+
+    #[setter]
+    fn set_to(mut self_: PyRefMut<'_, Self>, to: Py<PyDateTime>) -> PyResult<()> {
+        Ok(())
+    }
+}
+
+fn validate_seasonal_dates<'py>(from_: &Py<PyDateTime>, to: &Py<PyDateTime>) -> PyResult<()> {
+    Ok(())
 }
 
 #[pyclass(extends=Discount)]
