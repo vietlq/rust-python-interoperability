@@ -31,31 +31,69 @@ struct Discount {
 impl Discount {
     #[new]
     fn new(percentage: f64) -> PyResult<Self> {
-        if (percentage < 0.0) || (percentage > 1.0) {
-            Err(PyValueError::new_err("Percentage must be between 0 and 1"))
-        } else {
-            Ok(Discount { percentage })
+        match validate_percentage(percentage) {
+            Err(x) => Err(x),
+            Ok(()) => Ok(Discount { percentage }),
         }
     }
 
     fn apply(&self, price: f64) -> f64 {
         price * (1.0 - self.percentage)
     }
+
+    #[setter]
+    fn set_percentage(&mut self, percentage: f64) -> PyResult<()> {
+        match validate_percentage(percentage) {
+            Err(x) => Err(x),
+            Ok(()) => {
+                self.percentage = percentage;
+                Ok(())
+            }
+        }
+    }
+}
+
+fn validate_percentage(percentage: f64) -> PyResult<()> {
+    if (percentage < 0.0) || (percentage > 1.0) {
+        Err(PyValueError::new_err("Percentage must be between 0 and 1"))
+    } else {
+        Ok(())
+    }
 }
 
 #[pyclass(extends=Discount)]
 struct SeasonalDiscount {
     #[pyo3(get)]
-    to: Py<PyDateTime>,
+    from_: Py<PyDateTime>,
 
     #[pyo3(get)]
-    from_: Py<PyDateTime>,
+    to: Py<PyDateTime>,
+}
+
+#[pymethods]
+impl SeasonalDiscount {
+    #[new]
+    fn new(percentage: f64, from_: Py<PyDateTime>, to: Py<PyDateTime>) -> PyClassInitializer<Self> {
+        let parent = Discount { percentage };
+        let seasonal_discount = SeasonalDiscount { from_, to };
+        PyClassInitializer::from(parent).add_subclass(seasonal_discount)
+    }
 }
 
 #[pyclass(extends=Discount)]
 struct CappedDiscount {
     #[pyo3(get)]
     cap: f64,
+}
+
+#[pymethods]
+impl CappedDiscount {
+    #[new]
+    fn new(percentage: f64, cap: f64) -> PyClassInitializer<Self> {
+        let parent = Discount { percentage };
+        let capped_discount = CappedDiscount { cap };
+        PyClassInitializer::from(parent).add_subclass(capped_discount)
+    }
 }
 
 // https://pyo3.rs/v0.23.4/exception.html
