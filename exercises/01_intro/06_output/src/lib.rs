@@ -2,7 +2,7 @@ use pyo3::prelude::*;
 
 #[pyfunction]
 // TODO: Implement a function that returns a list containing the first `n` numbers in Fibonacci's sequence.
-fn fibonacci(n: u8) -> Vec<u64> {
+fn fibonacci(n: u64) -> Vec<u64> {
     if n == 0 {
         return vec![];
     }
@@ -12,7 +12,7 @@ fn fibonacci(n: u8) -> Vec<u64> {
     }
 
     let mut result: Vec<u64> = vec![0, 1];
-    let mut runner: u8 = 2;
+    let mut runner: u64 = 2;
     let mut prev: u64 = 1;
     let mut curr: u64 = 1;
 
