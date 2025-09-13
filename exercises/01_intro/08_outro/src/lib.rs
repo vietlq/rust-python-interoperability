@@ -19,7 +19,7 @@ fn pyint_to_biguint(py: Python, pyobj: &PyObject) -> PyResult<BigUint> {
     // For large integers, convert to decimal string
     let int_str: String = pyint.call_method0("__str__")?.extract()?;
     BigUint::from_str(&int_str)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyTypeError, _>(e.to_string()))
 }
 
 fn biguint_to_pyint(py: Python, big_int: &BigUint) -> PyResult<PyObject> {
@@ -43,6 +43,12 @@ fn pylist_to_biguints(py: Python, pylist: &Bound<'_, PyList>) -> PyResult<Vec<Bi
 
 #[pyfunction]
 fn max_k(py: Python, int_list: &Bound<'_, PyList>, k: usize) -> PyResult<Py<PyList>> {
+    if int_list.len() < k {
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            "k is greater than the length of the list".to_string(),
+        ));
+    }
+
     let mut biguints = pylist_to_biguints(py, int_list)?;
 
     // Sort in descending order and take k largest
