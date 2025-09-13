@@ -37,14 +37,24 @@ impl ShoppingOrder {
         price: &Bound<'_, PyInt>,
         quantity: &Bound<'_, PyInt>,
     ) -> PyResult<Self> {
+        let price = price
+            .extract::<u64>()
+            .map_err(|_| PyValueError::new_err("price cannot be negative"))?;
+        if price == 0 {
+            return Err(PyValueError::new_err("price must be positive"));
+        }
+
+        let quantity = quantity
+            .extract::<u64>()
+            .map_err(|_| PyValueError::new_err("quantity cannot be negative"))?;
+        if quantity == 0 {
+            return Err(PyValueError::new_err("quantity must be positive"));
+        }
+
         Ok(ShoppingOrder {
             name: name.to_string(),
-            price: price
-                .extract::<u64>()
-                .map_err(|_| PyValueError::new_err("price cannot be negative"))?,
-            quantity: quantity
-                .extract::<u64>()
-                .map_err(|_| PyValueError::new_err("quantity cannot be negative"))?,
+            price: price,
+            quantity: quantity,
         })
     }
 }
