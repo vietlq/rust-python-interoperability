@@ -23,14 +23,14 @@ impl ShoppingOrder {
     fn new(name: String, price: Bound<'_, PyInt>, quantity: Bound<'_, PyInt>) -> PyResult<Self> {
         let price = price
             .extract()
-            .map_err(|_| PyValueError::new_err("Price must be an non-negative integer"))?;
+            .map_err(|_| PyValueError::new_err("Price must be a non-negative integer"))?;
         if price == 0 {
             return Err(PyValueError::new_err("Price cannot be zero"));
         }
 
         let quantity = quantity
             .extract()
-            .map_err(|_| PyValueError::new_err("Quantity must be an non-negative integer"))?;
+            .map_err(|_| PyValueError::new_err("Quantity must be a non-negative integer"))?;
         if quantity == 0 {
             return Err(PyValueError::new_err("Quantity cannot be zero"));
         }
