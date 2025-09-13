@@ -1,4 +1,6 @@
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3::types::{PyInt, PyString};
 
 // TODO: Add a `__new__` constructor to the `ShoppingOrder` class that takes the following arguments:
 //  - `name` (non-empty string)
@@ -14,6 +16,37 @@ struct ShoppingOrder {
     price: u64,
     #[pyo3(get, set)]
     quantity: u64,
+}
+
+/*
+fn extract_or_value_error<'py, In: FromPyObject<'py>, Out>(in_val: In) -> PyResult<Out>
+where
+    In: FromPyObject<'py>,
+{
+    in_val
+        .extract_bound::<Out>(in_val)
+        .map_err(|_| PyValueError::new_err(""))?
+}
+*/
+
+#[pymethods]
+impl ShoppingOrder {
+    #[new]
+    fn new(
+        name: &Bound<'_, PyString>,
+        price: &Bound<'_, PyInt>,
+        quantity: &Bound<'_, PyInt>,
+    ) -> PyResult<Self> {
+        Ok(ShoppingOrder {
+            name: name.to_string(),
+            price: price
+                .extract::<u64>()
+                .map_err(|_| PyValueError::new_err("price cannot be negative"))?,
+            quantity: quantity
+                .extract::<u64>()
+                .map_err(|_| PyValueError::new_err("quantity cannot be negative"))?,
+        })
+    }
 }
 
 #[pymodule]
