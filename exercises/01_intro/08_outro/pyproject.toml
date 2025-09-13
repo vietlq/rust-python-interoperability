@@ -11,6 +11,9 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
 version = "0.1.0"
+dependencies = [
+    "maturin>=1.9.4",
+]
 
 [tool.maturin]
 features = ["pyo3/extension-module"]

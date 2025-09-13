@@ -5,6 +5,7 @@
 use num_bigint::BigUint;
 use pyo3::prelude::*;
 use pyo3::types::{PyInt, PyList};
+use std::ffi::CString;
 use std::str::FromStr;
 
 fn pyint_to_biguint(py: Python, pyobj: &PyObject) -> PyResult<BigUint> {
@@ -21,26 +22,18 @@ fn pyint_to_biguint(py: Python, pyobj: &PyObject) -> PyResult<BigUint> {
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 
-fn pyint_to_biguint_hex(py: Python, pyobj: &PyObject) -> PyResult<BigUint> {
-    let pyint = pyobj.downcast_bound::<PyInt>(py)?;
+fn biguint_to_pyint(py: Python, big_int: &BigUint) -> PyResult<PyObject> {
+    // Convert BigUint back to Python int via string
+    let int_str = big_int.to_string();
 
-    // Fast path for small integers
-    if let Ok(small_val) = pyint.extract::<u64>() {
-        return Ok(BigUint::from(small_val));
-    }
-
-    // Use Python's hex() for large integers
-    let hex_builtin = py.import("builtins")?.getattr("hex")?;
-    let hex_result: String = hex_builtin.call1((pyint,))?.extract()?;
-
-    // Remove "0x" prefix
-    let hex_str = hex_result.strip_prefix("0x").unwrap_or(&hex_result);
-
-    BigUint::from_str_radix(hex_str, 16)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+    // Use Python's int() constructor directly
+    // let int_type = py.get_type::<pyo3::types::PyInt>();
+    // let result = int_type.call1((int_str,));
+    // Ok(result.into())
+    Ok((py.eval(&CString::new(int_str)?.as_c_str(), None, None)?).into())
 }
 
-fn pylist_to_biguints(py: Python, pylist: &PyList) -> PyResult<Vec<BigUint>> {
+fn pylist_to_biguints(py: Python, pylist: &Bound<'_, PyList>) -> PyResult<Vec<BigUint>> {
     let items: Vec<PyObject> = pylist.extract()?;
     items
         .into_iter()
@@ -49,8 +42,20 @@ fn pylist_to_biguints(py: Python, pylist: &PyList) -> PyResult<Vec<BigUint>> {
 }
 
 #[pyfunction]
-fn max_k(py: Python, int_list: &PyList, k: usize) -> &PyList {
-    pylist_to_biguints(py, int_list)
+fn max_k(py: Python, int_list: &Bound<'_, PyList>, k: usize) -> PyResult<Py<PyList>> {
+    let mut biguints = pylist_to_biguints(py, int_list)?;
+
+    // Sort in descending order and take k largest
+    biguints.sort_by(|a, b| b.cmp(a)); // descending order
+    biguints.truncate(k);
+
+    // Convert back to Python list
+    let py_results: PyResult<Vec<_>> = biguints
+        .iter()
+        .map(|big_int| biguint_to_pyint(py, big_int))
+        .collect();
+
+    Ok(PyList::new(py, py_results?)?.into())
 }
 
 #[pymodule]

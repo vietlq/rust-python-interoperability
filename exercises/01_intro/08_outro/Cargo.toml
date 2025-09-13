@@ -8,4 +8,5 @@ crate-type = ["cdylib"]
 
 [dependencies]
 num-bigint = "0.4.6"
+num-traits = "0.2.19"
 pyo3 = { workspace = true }
