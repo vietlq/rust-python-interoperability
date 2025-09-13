@@ -49,6 +49,12 @@ fn max_k(py: Python, int_list: &Bound<'_, PyList>, k: usize) -> PyResult<Py<PyLi
         ));
     }
 
+    if k == 0 {
+        // Both ways to return an empty list are fine
+        // return Ok(PyList::new(py, Vec::<PyObject>::new())?.into());
+        return Ok(PyList::empty(py).into());
+    }
+
     let mut biguints = pylist_to_biguints(py, int_list)?;
 
     // Sort in descending order and take k largest
