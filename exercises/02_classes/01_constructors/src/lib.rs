@@ -51,8 +51,18 @@ impl ShoppingOrder {
             return Err(PyValueError::new_err("quantity must be positive"));
         }
 
+        let name = name.to_string();
+        if name.len() == 0 {
+            return Err(PyValueError::new_err("name cannot be empty"));
+        }
+        if name.trim_matches(&[' ', '\t', '\r', '\n']).len() == 0 {
+            return Err(PyValueError::new_err(
+                "name must not contain non-space characters",
+            ));
+        }
+
         Ok(ShoppingOrder {
-            name: name.to_string(),
+            name: name,
             price: price,
             quantity: quantity,
         })
