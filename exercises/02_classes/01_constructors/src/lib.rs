@@ -55,9 +55,9 @@ impl ShoppingOrder {
         if name.len() == 0 {
             return Err(PyValueError::new_err("name cannot be empty"));
         }
-        if name.trim_matches(&[' ', '\t', '\r', '\n']).len() == 0 {
+        if name.trim().len() == 0 {
             return Err(PyValueError::new_err(
-                "name must not contain non-space characters",
+                "name must contain non-space characters",
             ));
         }
 

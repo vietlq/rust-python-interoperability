@@ -40,4 +40,4 @@ def test_empty_name():
 
 @pytest.mark.xfail(strict=True, reason="Name can't be just whitespace", raises=ValueError)
 def test_whitespace_name():
-    ShoppingOrder("  ", 10, 5)
+    ShoppingOrder(" \t\r\n ", 10, 5)
