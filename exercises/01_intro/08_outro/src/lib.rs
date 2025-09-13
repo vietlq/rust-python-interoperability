@@ -5,7 +5,8 @@
 use num_bigint::BigUint;
 use pyo3::prelude::*;
 use pyo3::types::{PyInt, PyList};
-use std::ffi::CString;
+// Used for py.eval from C-string to Python int
+// use std::ffi::CString;
 use std::str::FromStr;
 
 fn pyint_to_biguint(py: Python, pyobj: &PyObject) -> PyResult<BigUint> {
@@ -27,10 +28,12 @@ fn biguint_to_pyint(py: Python, big_int: &BigUint) -> PyResult<PyObject> {
     let int_str = big_int.to_string();
 
     // Use Python's int() constructor directly
-    // let int_type = py.get_type::<pyo3::types::PyInt>();
-    // let result = int_type.call1((int_str,));
-    // Ok(result.into())
-    Ok((py.eval(&CString::new(int_str)?.as_c_str(), None, None)?).into())
+    let int_type = py.get_type::<pyo3::types::PyInt>();
+    let result = int_type.call1((int_str,));
+    Ok(result?.into())
+
+    // Or use `eval` to parse into `int`
+    // Ok((py.eval(&CString::new(int_str)?.as_c_str(), None, None)?).into())
 }
 
 fn pylist_to_biguints(py: Python, pylist: &Bound<'_, PyList>) -> PyResult<Vec<BigUint>> {
