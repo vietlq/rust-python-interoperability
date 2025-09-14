@@ -49,6 +49,12 @@ impl ShoppingOrder {
     fn total(&self) -> u64 {
         self.quantity * self.price
     }
+
+    // Equivalent to @property in Python
+    #[getter]
+    fn total_cost(&self) -> u64 {
+        self.total()
+    }
 }
 
 #[pymodule]
