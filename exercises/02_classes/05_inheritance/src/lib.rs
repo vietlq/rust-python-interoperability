@@ -19,6 +19,8 @@
 //  attributes of an `Employee`.
 use pyo3::prelude::*;
 
+// We must use pyclass(subclass) to allow subclassing,
+// otherwise compiler will complain.
 #[pyclass(subclass)]
 struct Person {
     #[pyo3(get)]
@@ -43,7 +45,8 @@ impl Person {
     }
 }
 
-#[pyclass(extends=Person)]
+// We need to use pyclass(extends=ParentClassName)
+#[pyclass(subclass, extends=Person)]
 struct Employee {
     #[pyo3(get)]
     id: u64,
@@ -63,9 +66,31 @@ impl Employee {
     }
 }
 
+#[pyclass(extends=Employee)]
+struct Manager {
+    #[pyo3(get, set)]
+    title: String,
+}
+
+#[pymethods]
+impl Manager {
+    #[new]
+    fn new(
+        first_name: String,
+        last_name: String,
+        id: u64,
+        title: String,
+    ) -> PyClassInitializer<Self> {
+        let parent = Employee::new(first_name, last_name, id);
+        let child = Manager { title };
+        PyClassInitializer::from(parent).add_subclass(child)
+    }
+}
+
 #[pymodule]
 fn inheritance(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Person>()?;
     m.add_class::<Employee>()?;
+    m.add_class::<Manager>()?;
     Ok(())
 }
