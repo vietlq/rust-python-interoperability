@@ -4,6 +4,7 @@ import pytest
 
 from mthreading import word_count
 
+
 def test_word_count_single_process():
     text = "hello world"
     assert word_count(text, 1) == 2
