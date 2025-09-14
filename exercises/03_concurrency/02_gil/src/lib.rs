@@ -25,10 +25,28 @@ fn word_count(text: Bound<'_, PyString>, n_threads: usize) -> PyResult<usize> {
     // We use std::thread::scope so that child threads never outlive their parent
     let chunks = split_into_chunks(text, n_threads);
 
-    // Use atomic variables
-    let final_result = word_count_using_atomic_vars(&chunks);
+    // Use atomic variables: For simple cases
+    // let final_result = word_count_using_atomic_vars(&chunks);
+
+    // Use join handles - the most idiomatic way
+    let final_result = word_count_using_join_handles(&chunks);
 
     Ok(final_result)
+}
+
+fn word_count_using_join_handles(chunks: &Vec<&str>) -> usize {
+    let final_result = std::thread::scope(|scope| {
+        let handles: Vec<_> = chunks
+            .into_iter()
+            .map(|chunk| scope.spawn(move || word_count_chunk(chunk)))
+            .collect();
+
+        handles
+            .into_iter()
+            .map(|handle| handle.join().unwrap())
+            .sum()
+    });
+    final_result
 }
 
 fn word_count_using_atomic_vars(chunks: &Vec<&str>) -> usize {
