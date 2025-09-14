@@ -1,4 +1,6 @@
 use pyo3::{prelude::*, types::PyString};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 /// Use `std::thread::scope` to spawn `n_threads` threads to count words in parallel.
 ///
@@ -20,7 +22,29 @@ fn word_count(text: Bound<'_, PyString>, n_threads: usize) -> PyResult<usize> {
     // directly as an argument, to avoid an extra copy of the string
     let text = text.to_str()?;
 
-    todo!()
+    // We use std::thread::scope so that child threads never outlive their parent
+    let chunks = split_into_chunks(text, n_threads);
+    // We don't need `mut` here, `Arc` should suffice.
+    // It's recommended to use AtomicUsize instead of usize, because usize is immutable.
+    let result: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+
+    std::thread::scope(|scope| {
+        for chunk in chunks {
+            // Question why we can get away without `move` here?
+            scope.spawn(/* move */ || {
+                // We must clone Arc reference for each scoped thread.
+                // It will not create new result, only reference count to it.
+                // This is actually cheaper than using mutex.
+                let result_clone = Arc::clone(&result);
+                let local_result = word_count_chunk(chunk);
+                result_clone.fetch_add(local_result, Ordering::Relaxed);
+            });
+        }
+    });
+
+    let final_result = result.load(Ordering::Relaxed);
+
+    Ok(final_result)
 }
 
 /// Count words in a single chunk of text.
