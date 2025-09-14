@@ -17,10 +17,9 @@
 // returns the discounted price.
 // `SeasonalDiscount` should raise an `ExpiredDiscount` exception if `apply` is called but
 // the current date is outside the discount period.
-use chrono::{DateTime, Datelike, TimeZone};
+use chrono::{DateTime, Datelike};
 use pyo3::exceptions::{PyException, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::PyDateTime;
 
 #[pyclass(subclass)]
 struct Discount {
@@ -106,12 +105,29 @@ impl SeasonalDiscount {
         to: DateTime<chrono::Utc>,
     ) -> PyResult<PyClassInitializer<Self>> {
         let parent = Discount::new(percentage)?;
-        let _ = validate_season_dates(&from_, &to)?;
-        let child = SeasonalDiscount {
-            from_: from_,
-            to: to,
-        };
-        Ok(PyClassInitializer::from(parent).add_subclass(child))
+        validate_season_dates(&from_, &to).map(|_| {
+            let child = SeasonalDiscount {
+                from_: from_,
+                to: to,
+            };
+            Ok(PyClassInitializer::from(parent).add_subclass(child))
+        })?
+    }
+
+    #[setter]
+    fn from_(&mut self, from_: DateTime<chrono::Utc>) -> PyResult<()> {
+        validate_season_dates(&from_, &self.to).map(|_| {
+            self.from_ = from_;
+            Ok(())
+        })?
+    }
+
+    #[setter]
+    fn to(&mut self, to: DateTime<chrono::Utc>) -> PyResult<()> {
+        validate_season_dates(&self.from_, &to).map(|_| {
+            self.to = to;
+            Ok(())
+        })?
     }
 }
 
