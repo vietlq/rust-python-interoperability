@@ -1,4 +1,5 @@
 from multiprocessing import Process, Queue
+import multiprocessing as mp
 
 
 # Return the number of words in `text` using `n_processes` processes.
@@ -15,12 +16,36 @@ from multiprocessing import Process, Queue
 # Relevant links:
 # - https://docs.python.org/3/library/multiprocessing.html
 def word_count(text: str, n_processes: int) -> int:
-    pass
+    # We should spawn instead of forking to avoid sporadic dead-locks.
+    # Child processes with clean and separate memory spaces are better.
+    # This is the right cost to pay.
+    # Read: https://pythonspeed.com/articles/python-multiprocessing/
+    context = mp.get_context("spawn")
+    context.Process()
+    queue = context.Queue()
+    result = 0
+
+    chunks_generator = split_into_chunks(text, n_processes)
+    child_processes = [
+        context.Process(target=word_count_task, args=(chunk, queue))
+        for chunk in chunks_generator
+    ]
+
+    for child_proc in child_processes:
+        child_proc.start()
+
+    for child_proc in child_processes:
+        child_proc.join()
+
+    while not queue.empty():
+        result += queue.get()
+
+    return result
 
 
 # Compute the number of words in `text` and push the result into `result_queue`.
 # This function should be used as the target function for a `Process`.
-def word_count_task(text: str, result_queue: 'Queue[int]') -> None:
+def word_count_task(text: str, result_queue: "Queue[int]") -> None:
     n_words = len(text.split())
     result_queue.put(n_words)
 
