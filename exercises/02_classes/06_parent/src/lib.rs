@@ -57,6 +57,7 @@ impl AccountWithHistory {
 
         let curr_balance = parent.balance;
         parent.balance = balance;
+        // NOTE: Use bind(py) here to use Python API (list.append) and for GIL to allocate memory
         let _ = self_.history.bind(py).append(curr_balance);
     }
 
