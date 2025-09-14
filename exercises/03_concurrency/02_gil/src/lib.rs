@@ -24,6 +24,14 @@ fn word_count(text: Bound<'_, PyString>, n_threads: usize) -> PyResult<usize> {
 
     // We use std::thread::scope so that child threads never outlive their parent
     let chunks = split_into_chunks(text, n_threads);
+
+    // Use atomic variables
+    let final_result = word_count_using_atomic_vars(&chunks);
+
+    Ok(final_result)
+}
+
+fn word_count_using_atomic_vars(chunks: &Vec<&str>) -> usize {
     // We don't need `mut` here, `Arc` should suffice.
     // It's recommended to use AtomicUsize instead of usize, because usize is immutable.
     let result: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
@@ -43,8 +51,7 @@ fn word_count(text: Bound<'_, PyString>, n_threads: usize) -> PyResult<usize> {
     });
 
     let final_result = result.load(Ordering::Relaxed);
-
-    Ok(final_result)
+    final_result
 }
 
 /// Count words in a single chunk of text.
