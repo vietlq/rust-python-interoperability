@@ -1,6 +1,6 @@
 use pyo3::{prelude::*, types::PyString};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Use `std::thread::scope` to spawn `n_threads` threads to count words in parallel.
 ///
@@ -31,9 +31,13 @@ fn word_count(text: Bound<'_, PyString>, n_threads: usize) -> PyResult<usize> {
     // Use join handles - the most idiomatic way
     let final_result = word_count_using_join_handles(&chunks);
 
+    // Use mutex - for complex cases when idiomatic code cannot do it
+    // let final_result = word_count_using_mutex(&chunks);
+
     Ok(final_result)
 }
 
+#[allow(dead_code)]
 fn word_count_using_join_handles(chunks: &Vec<&str>) -> usize {
     let final_result = std::thread::scope(|scope| {
         let handles: Vec<_> = chunks
@@ -49,6 +53,7 @@ fn word_count_using_join_handles(chunks: &Vec<&str>) -> usize {
     final_result
 }
 
+#[allow(dead_code)]
 fn word_count_using_atomic_vars(chunks: &Vec<&str>) -> usize {
     // We don't need `mut` here, `Arc` should suffice.
     // It's recommended to use AtomicUsize instead of usize, because usize is immutable.
@@ -70,6 +75,26 @@ fn word_count_using_atomic_vars(chunks: &Vec<&str>) -> usize {
 
     let final_result = result.load(Ordering::Relaxed);
     final_result
+}
+
+#[allow(dead_code)]
+fn word_count_using_mutex(chunks: &Vec<&str>) -> usize {
+    let result: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
+
+    std::thread::scope(|scope| {
+        for chunk in chunks {
+            let result_clone = Arc::clone(&result);
+            scope.spawn(move || {
+                let local_result = word_count_chunk(chunk);
+                let mut guard = result_clone.lock().unwrap();
+                *guard += local_result;
+            });
+        }
+    });
+
+    // We have to clone, otherwise result is out of scope
+    let result = result.lock().unwrap().clone();
+    result
 }
 
 /// Count words in a single chunk of text.
