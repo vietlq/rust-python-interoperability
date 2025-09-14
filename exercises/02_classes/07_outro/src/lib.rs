@@ -17,7 +17,7 @@
 // returns the discounted price.
 // `SeasonalDiscount` should raise an `ExpiredDiscount` exception if `apply` is called but
 // the current date is outside the discount period.
-use chrono::{DateTime, Datelike};
+use chrono::{DateTime, Datelike, Utc};
 use pyo3::exceptions::{PyException, PyValueError};
 use pyo3::prelude::*;
 
@@ -54,8 +54,32 @@ impl Discount {
     }
 }
 
+// It's the best to treat exception classes as normal classes, and add `message` field.
+// Despite recommendations to use `create_exception`, avoid it and follow what we do here.
+// 1. Create a new exception class with a read-only field `message`.
+// 2. Then create `impl` under `pymethods` for `new(message: String)`.
+// 3. Create another `impl` but now without `pymethods` and implement `new_err`.
+// 4. Finally register the exception class with the module like for other classes.
+// Some reading: https://pyo3.rs/main/exception.html
 #[pyclass(extends=PyException)]
-struct ExpiredDiscount {}
+struct ExpiredDiscount {
+    #[pyo3(get)]
+    message: String,
+}
+
+#[pymethods]
+impl ExpiredDiscount {
+    #[new]
+    fn new(message: String) -> Self {
+        ExpiredDiscount { message }
+    }
+}
+
+impl ExpiredDiscount {
+    fn new_err(message: impl Into<String>) -> PyErr {
+        PyErr::new::<ExpiredDiscount, _>(message.into())
+    }
+}
 
 #[pyclass(extends=Discount)]
 struct SeasonalDiscount {
@@ -128,6 +152,16 @@ impl SeasonalDiscount {
             self.to = to;
             Ok(())
         })?
+    }
+
+    fn apply(self_: PyRef<'_, Self>, price: f64) -> PyResult<f64> {
+        let now = Utc::now();
+        if self_.to < now {
+            Err(ExpiredDiscount::new_err("The discount is no longer active"))
+        } else {
+            let discounted_price = self_.as_super().apply(price);
+            Ok(discounted_price)
+        }
     }
 }
 
