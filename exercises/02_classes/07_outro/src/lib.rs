@@ -63,7 +63,48 @@ struct SeasonalDiscount {
 }
 
 #[pyclass(extends=Discount)]
-struct CappedDiscount {}
+struct CappedDiscount {
+    #[pyo3(get)]
+    cap: f64,
+}
+
+#[pymethods]
+impl CappedDiscount {
+    #[new]
+    fn new(percentage: f64, cap: f64) -> PyResult<PyClassInitializer<Self>> {
+        let parent = Discount::new(percentage)?;
+        if cap <= 0.0 {
+            Err(PyValueError::new_err("Cap must be a positive number"))
+        } else {
+            let child = CappedDiscount { cap };
+            Ok(PyClassInitializer::from(parent).add_subclass(child))
+        }
+    }
+
+    #[setter]
+    fn cap(&mut self, cap: f64) -> PyResult<()> {
+        if cap <= 0.0 {
+            Err(PyValueError::new_err("Cap must be a positive number"))
+        } else {
+            self.cap = cap;
+            Ok(())
+        }
+    }
+
+    /*
+     * self_.unbind() returns Py<CappedDiscount> (GIL-independent reference)
+     * Py<T> doesn't provide direct field access for safety reasons
+     * self_.borrow() returns PyRef<CappedDiscount> which allows field access
+     * PyRef<T> dereferences to &T, giving you access to the struct fields
+     **/
+    fn apply(self_: Bound<'_, Self>, price: f64) -> f64 {
+        let default_discount = self_.as_super().borrow().percentage * price;
+        let cap = self_.borrow().cap;
+        let final_discount = default_discount.min(cap);
+
+        price - final_discount
+    }
+}
 
 #[pymodule]
 fn outro2(m: &Bound<'_, PyModule>) -> PyResult<()> {
