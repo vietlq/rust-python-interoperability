@@ -17,8 +17,10 @@
 // returns the discounted price.
 // `SeasonalDiscount` should raise an `ExpiredDiscount` exception if `apply` is called but
 // the current date is outside the discount period.
+use chrono::{DateTime, Datelike, TimeZone};
 use pyo3::exceptions::{PyException, PyValueError};
 use pyo3::prelude::*;
+use pyo3::types::PyDateTime;
 
 #[pyclass(subclass)]
 struct Discount {
@@ -58,8 +60,59 @@ struct ExpiredDiscount {}
 
 #[pyclass(extends=Discount)]
 struct SeasonalDiscount {
-    //from_: ,
-    //to: ,
+    #[pyo3(get)]
+    from_: DateTime<chrono::Utc>,
+
+    #[pyo3(get)]
+    to: DateTime<chrono::Utc>,
+}
+
+fn validate_season_dates(
+    from_: &DateTime<chrono::Utc>,
+    to: &DateTime<chrono::Utc>,
+) -> PyResult<()> {
+    if from_.num_days_from_ce() < to.num_days_from_ce() {
+        Ok(())
+    } else {
+        Err(PyValueError::new_err(
+            "`from_` date must be before `to` date",
+        ))
+    }
+
+    /*
+    match &from_.cmp(&to) {
+        std::cmp::Ordering::Greater | std::cmp::Ordering::Equal => Err(PyValueError::new_err(
+            "`from_` date must be before `to` date",
+        )),
+        std::cmp::Ordering::Less => {
+            if from_.num_days_from_ce() < to.num_days_from_ce() {
+                Ok(())
+            } else {
+                Err(PyValueError::new_err(
+                    "`from_` date must be before `to` date",
+                ))
+            }
+        }
+    }
+    */
+}
+
+#[pymethods]
+impl SeasonalDiscount {
+    #[new]
+    fn new(
+        percentage: f64,
+        from_: DateTime<chrono::Utc>,
+        to: DateTime<chrono::Utc>,
+    ) -> PyResult<PyClassInitializer<Self>> {
+        let parent = Discount::new(percentage)?;
+        let _ = validate_season_dates(&from_, &to)?;
+        let child = SeasonalDiscount {
+            from_: from_,
+            to: to,
+        };
+        Ok(PyClassInitializer::from(parent).add_subclass(child))
+    }
 }
 
 #[pyclass(extends=Discount)]
