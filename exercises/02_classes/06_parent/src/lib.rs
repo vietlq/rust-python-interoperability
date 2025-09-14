@@ -48,13 +48,9 @@ impl AccountWithHistory {
         Ok(PyClassInitializer::from(parent).add_subclass(child))
     }
 
-    #[getter(balance)]
-    fn get_balance(self_: PyRef<'_, Self>) -> f64 {
-        self_.as_super().balance
-    }
-
     // We must use PyRef/PyRefMut to access Python `self`.
     // Then we must use as_super() to get the instance of the parent class.
+    // We must use non-colliding function names and refer back to `balance`.
     #[setter(balance)]
     fn set_balance(mut self_: PyRefMut<'_, Self>, py: Python, balance: f64) {
         let parent = self_.as_super();
@@ -62,6 +58,13 @@ impl AccountWithHistory {
         let curr_balance = parent.balance;
         parent.balance = balance;
         let _ = self_.history.bind(py).append(curr_balance);
+    }
+
+    // We must use non-colliding function names and refer back to `balance`.
+    // When overriding setter from the parent class, we must override the getter too.
+    #[getter(balance)]
+    fn get_balance(self_: PyRef<'_, Self>) -> f64 {
+        self_.as_super().balance
     }
 }
 
