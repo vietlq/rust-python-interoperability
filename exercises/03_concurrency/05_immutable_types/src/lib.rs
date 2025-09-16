@@ -1,6 +1,23 @@
 /*
 * https://rust-exercises.com/rust-python-interop/03_concurrency/05_immutable_types.html
 *
+* Immutable types
+
+Concurrency introduces many new classes of bugs that are not present in
+single-threaded programs. Data races are one of the most common:
+two threads try to access the same memory location at the same time,
+and at least one of them is writing to it. What should happen?
+In most programming languages, the behavior is undefined: the program
+could crash, or it could produce incorrect results.
+
+Data races can't happen in a single-threaded program, because only
+one thread can access the memory at a time. That's where the GIL comes in:
+since it serializes the execution of code that accesses Python objects,
+it prevents all kinds of data races (albeit with a significant performance cost).
+
+There's another way to prevent data races though: by making sure that the
+data is immutable. There's no need for synchronization if the data can't change!
+*
 * Let's see how we can define a similar immutable type in Rust.
 
 use pyo3::prelude::*;
