@@ -138,7 +138,20 @@ fn compute_prime_factors<'python>(
     python: Python<'python>,
     numbers: Bound<'python, PyList>,
 ) -> PyResult<Bound<'python, PyDict>> {
-    todo!()
+    let rs_numbers = numbers.extract::<Vec<u64>>()?;
+    let mut result: Vec<(u64, Vec<u64>)> = Vec::new();
+    python.allow_threads(|| {
+        result = rs_numbers
+            .iter()
+            .map(|number| {
+                let number = number.clone();
+                (number.clone(), Vec::new())
+            })
+            .collect();
+    });
+
+    let out_dict = PyDict::new(python);
+    Ok(out_dict)
 }
 
 #[pymodule]
