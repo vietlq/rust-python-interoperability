@@ -159,6 +159,12 @@ fn nth_prime(py: Python<'_>, n: u64) -> u64 {
         // This code runs in a native thread in parallel and does not need GIL.
         // Python can switch to other threads and when this is done,
         // GIL will be acquired and the result passed back to Python.
+        // NOTE: Python::allow_threads is only sound if the closure
+        // doesn't interact with Python objects.
+        // If that's not the case, we end up with undefined behavior:
+        // Rust code touching Python objects while the Python interpreter is
+        // running other Python code, assuming nothing else is happening to
+        // those objects thanks to the GIL. A recipe for disaster!
         let mut count = 0;
         let mut num = 2; // Start checking primes from 2
         while count < n {
