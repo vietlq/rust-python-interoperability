@@ -117,6 +117,7 @@ use pyo3::{
     prelude::*,
     types::{PyDict, PyList},
 };
+use rayon::prelude::*;
 
 #[pyfunction]
 // You're given a Python list of non-negative numbers.
@@ -146,8 +147,9 @@ fn compute_prime_factors<'python>(
 
     // Step 2. Release GIL and do expensive computations
     python.allow_threads(|| {
+        // let chrono::
         result = rs_numbers
-            .iter()
+            .par_iter()
             .map(|number| {
                 let number = number.clone();
                 let vec_unique_factors = factors_uniq(number);
