@@ -112,6 +112,7 @@ the Python objects you're working with. In other words, move towards
 fine-grained locking rather than the lock-the-world approach you
 get with the GIL.
 * */
+use primes::factors_uniq;
 use pyo3::{
     prelude::*,
     types::{PyDict, PyList},
@@ -138,19 +139,28 @@ fn compute_prime_factors<'python>(
     python: Python<'python>,
     numbers: Bound<'python, PyList>,
 ) -> PyResult<Bound<'python, PyDict>> {
+    // Step 1. Create empty containers
     let rs_numbers = numbers.extract::<Vec<u64>>()?;
+    let out_dict = PyDict::new(python);
     let mut result: Vec<(u64, Vec<u64>)> = Vec::new();
+
+    // Step 2. Release GIL and do expensive computations
     python.allow_threads(|| {
         result = rs_numbers
             .iter()
             .map(|number| {
                 let number = number.clone();
-                (number.clone(), Vec::new())
+                let vec_unique_factors = factors_uniq(number);
+                (number.clone(), vec_unique_factors)
             })
             .collect();
     });
 
-    let out_dict = PyDict::new(python);
+    // Step 3. Populate the result and return
+    for (num, factors) in result {
+        out_dict.set_item(num, factors)?;
+    }
+
     Ok(out_dict)
 }
 
