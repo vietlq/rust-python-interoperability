@@ -118,6 +118,18 @@ use pyo3::{
     types::{PyDict, PyList},
 };
 use rayon::prelude::*;
+use std::collections::HashMap;
+
+/*
+Recommendation:
+
+For simple cases: Use HashMap - let PyO3 handle conversions
+For complex dict operations: Receive Bound<'_, PyDict>, return Py<PyDict>
+For storage: Always use Py<PyDict> in struct fields
+Most flexible: Use PyObject for returns, &PyAny for receives
+
+The automatic conversion with HashMap is often the easiest and most idiomatic approach!
+* */
 
 #[pyfunction]
 // You're given a Python list of non-negative numbers.
@@ -140,30 +152,47 @@ fn compute_prime_factors<'python>(
     python: Python<'python>,
     numbers: Bound<'python, PyList>,
 ) -> PyResult<Bound<'python, PyDict>> {
-    // Step 1. Create empty containers
+    // Step 1. Extract the numbers into rust structure so we can skip GIL later.
     let rs_numbers = numbers.extract::<Vec<u64>>()?;
-    let out_dict = PyDict::new(python);
-    let mut result: Vec<(u64, Vec<u64>)> = Vec::new();
 
-    // Step 2. Release GIL and do expensive computations
-    python.allow_threads(|| {
+    // Step 2. Release GIL and do expensive computations.
+    let result: Vec<(u64, Vec<u64>)> = python.allow_threads(|| {
         // let chrono::
-        result = rs_numbers
+        rs_numbers
             .par_iter()
             .map(|number| {
                 let number = number.clone();
                 let vec_unique_factors = factors_uniq(number);
                 (number.clone(), vec_unique_factors)
             })
-            .collect();
+            .collect()
     });
 
-    // Step 3. Populate the result and return
+    // Step 3. Populate the result and return.
+    /*
+    // We do it the hard way and create own PyDict and insert each key/value.
+    let out_dict = PyDict::new(python);
     for (num, factors) in result {
         out_dict.set_item(num, factors)?;
     }
-
     Ok(out_dict)
+    */
+
+    // There's a simpler way using 'python lifetime.
+    // NOTE: By using explicit lifetime `'python` `in convert_direct`,
+    // we were able to simplify code and let PyO3 handle conversion from
+    // `HashMap` into `PyDict` with ease.
+    convert_direct(python, result)
+}
+
+// See how we declare the lifetime `'python` and able to return Bound<'python, PyDict>
+#[allow(dead_code)]
+fn convert_direct<'python>(
+    py: Python<'python>,
+    data: Vec<(u64, Vec<u64>)>,
+) -> PyResult<Bound<'python, PyDict>> {
+    let hashmap: HashMap<u64, Vec<u64>> = data.into_iter().collect();
+    hashmap.into_pyobject(py)
 }
 
 #[pymodule]
