@@ -1,5 +1,7 @@
 use pyo3::{prelude::*, types::PySet};
 use std::collections::HashSet;
+use std::result::Result;
+use url::Url;
 
 #[pyfunction]
 /// Given a starting URL (`start_from`), discover all the URLs *on the same domain*
@@ -51,10 +53,15 @@ pub fn site_map<'py>(
 ) -> PyResult<()> {
     let rs_site_map: HashSet<String> = site_map.extract::<HashSet<String>>()?;
 
-    python.allow_threads(|| {
-        println!("start_from = {}", start_from);
+    let _ = python.allow_threads(|| {
+        println!("start_from = {}", &start_from);
+
+        let host_url = get_host_url(&start_from).unwrap();
+        let host_url = get_host_url(&"https://a.b.c.com/d/?e=f#g=h".to_string()).unwrap();
+        println!("host_url = {}", &host_url);
+
         for link in &rs_site_map {
-            println!("{}", link);
+            println!("{}", &link);
         }
     });
 
@@ -65,4 +72,9 @@ pub fn site_map<'py>(
 fn outro3(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(site_map, m)?)?;
     Ok(())
+}
+
+fn get_host_url(url_str: &String) -> Option<String> {
+    let parsed_url = Url::parse(&url_str).unwrap();
+    Some(parsed_url.host_str().unwrap().to_string())
 }
