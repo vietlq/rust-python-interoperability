@@ -1,4 +1,5 @@
 use pyo3::{prelude::*, types::PySet};
+use std::collections::HashSet;
 
 #[pyfunction]
 /// Given a starting URL (`start_from`), discover all the URLs *on the same domain*
@@ -43,8 +44,21 @@ use pyo3::{prelude::*, types::PySet};
 ///
 /// Feel free to pull in any other crates you think might be useful.
 /// If your approach is channel-based, you might want to use the `crossbeam` crate too.
-pub fn site_map(start_from: String, site_map: Bound<'_, PySet>) {
-    todo!()
+pub fn site_map<'py>(
+    python: Python<'py>,
+    start_from: String,
+    site_map: Bound<'py, PySet>,
+) -> PyResult<()> {
+    let rs_site_map: HashSet<String> = site_map.extract::<HashSet<String>>()?;
+
+    python.allow_threads(|| {
+        println!("start_from = {}", start_from);
+        for link in &rs_site_map {
+            println!("{}", link);
+        }
+    });
+
+    Ok(())
 }
 
 #[pymodule]
