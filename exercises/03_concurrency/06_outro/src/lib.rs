@@ -1,9 +1,21 @@
+use anyhow::{Context, Result};
 use pyo3::{prelude::*, types::PySet};
 use reqwest;
 use scraper;
 use std::collections::HashSet;
-use std::result::Result;
 use url::Url;
+
+macro_rules! log_with_location {
+    ($($arg:tt)*) => {
+        println!("[{}:{}] {}", file!(), line!(), format!($($arg)*))
+    };
+}
+
+macro_rules! error_with_location {
+    ($($arg:tt)*) => {
+        anyhow::anyhow!("[{}:{}] {}", file!(), line!(), format!($($arg)*))
+    };
+}
 
 #[pyfunction]
 /// Given a starting URL (`start_from`), discover all the URLs *on the same domain*
@@ -55,31 +67,36 @@ pub fn site_map<'py>(
 ) -> PyResult<()> {
     let rs_site_map: HashSet<String> = site_map.extract::<HashSet<String>>()?;
 
-    let result =
-        python.allow_threads(|| -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-            println!("start_from = {}", &start_from);
+    let result = python.allow_threads(|| -> Result<()> {
+        println!("start_from = {}", &start_from);
 
-            let host_url = get_host_url(&start_from).ok_or("Invalid URL")?;
-            println!("host_url = {}", &host_url);
+        let host_url =
+            get_host_url(&start_from).ok_or_else(|| error_with_location!("Invalid URL"))?;
+        println!("host_url = {}", &host_url);
 
-            let response = reqwest::blocking::get(host_url)?;
-            let html_text = response.text()?;
-            let html_doc = scraper::Html::parse_document(&html_text);
-            let selector = scraper::Selector::parse("a").map_err(|_| "Bad selector")?;
+        let response = reqwest::blocking::get(&start_from).map_err(|e| {
+            error_with_location!("Could not get the URL {}. Error: {:?}", &start_from, e)
+        })?;
+        let html_text = response.text()?;
+        let html_doc = scraper::Html::parse_document(&html_text);
+        let selector = scraper::Selector::parse("a")
+            .map_err(|e| error_with_location!("Bad selector: {:?}", e))?;
 
-            for link in html_doc.select(&selector) {
-                println!(
-                    "{}",
-                    link.value().attr("href").ok_or("Invalid attribute href")?
-                )
-            }
+        for link in html_doc.select(&selector) {
+            println!(
+                "{}",
+                link.value()
+                    .attr("href")
+                    .context("Invalid attribute href")?
+            )
+        }
 
-            for link in &rs_site_map {
-                println!("{}", &link);
-            }
+        for link in &rs_site_map {
+            println!("{}", &link);
+        }
 
-            Ok(())
-        });
+        Ok(())
+    });
 
     // Convert the Result to PyResult
     result.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
