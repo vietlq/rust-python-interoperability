@@ -5,13 +5,13 @@ use scraper;
 use std::collections::HashSet;
 use url::Url;
 
-macro_rules! log_with_location {
+macro_rules! log_info {
     ($($arg:tt)*) => {
         println!("[{}:{}] {}", file!(), line!(), format!($($arg)*))
     };
 }
 
-macro_rules! error_with_location {
+macro_rules! log_error {
     ($($arg:tt)*) => {
         anyhow::anyhow!("[{}:{}] {}", file!(), line!(), format!($($arg)*))
     };
@@ -71,16 +71,15 @@ pub fn site_map<'py>(
         println!("start_from = {}", &start_from);
 
         let host_url =
-            get_host_url(&start_from).ok_or_else(|| error_with_location!("Invalid URL"))?;
+            get_host_url(&start_from).ok_or_else(|| log_error!("Invalid URL {}", &start_from))?;
         println!("host_url = {}", &host_url);
 
-        let response = reqwest::blocking::get(&start_from).map_err(|e| {
-            error_with_location!("Could not get the URL {}. Error: {:?}", &start_from, e)
-        })?;
+        let response = reqwest::blocking::get(&start_from)
+            .map_err(|e| log_error!("Could not get the URL {}. Error: {:?}", &start_from, e))?;
         let html_text = response.text()?;
         let html_doc = scraper::Html::parse_document(&html_text);
-        let selector = scraper::Selector::parse("a")
-            .map_err(|e| error_with_location!("Bad selector: {:?}", e))?;
+        let selector =
+            scraper::Selector::parse("a").map_err(|e| log_error!("Bad selector: {:?}", e))?;
 
         for link in html_doc.select(&selector) {
             println!(
