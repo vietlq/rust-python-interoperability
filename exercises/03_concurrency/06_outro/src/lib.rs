@@ -1,4 +1,6 @@
 use pyo3::{prelude::*, types::PySet};
+use reqwest;
+use scraper;
 use std::collections::HashSet;
 use std::result::Result;
 use url::Url;
@@ -53,19 +55,34 @@ pub fn site_map<'py>(
 ) -> PyResult<()> {
     let rs_site_map: HashSet<String> = site_map.extract::<HashSet<String>>()?;
 
-    let _ = python.allow_threads(|| {
-        println!("start_from = {}", &start_from);
+    let result =
+        python.allow_threads(|| -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+            println!("start_from = {}", &start_from);
 
-        let host_url = get_host_url(&start_from).unwrap();
-        let host_url = get_host_url(&"https://a.b.c.com/d/?e=f#g=h".to_string()).unwrap();
-        println!("host_url = {}", &host_url);
+            let host_url = get_host_url(&start_from).ok_or("Invalid URL")?;
+            println!("host_url = {}", &host_url);
 
-        for link in &rs_site_map {
-            println!("{}", &link);
-        }
-    });
+            let response = reqwest::blocking::get(host_url)?;
+            let html_text = response.text()?;
+            let html_doc = scraper::Html::parse_document(&html_text);
+            let selector = scraper::Selector::parse("a").map_err(|_| "Bad selector")?;
 
-    Ok(())
+            for link in html_doc.select(&selector) {
+                println!(
+                    "{}",
+                    link.value().attr("href").ok_or("Invalid attribute href")?
+                )
+            }
+
+            for link in &rs_site_map {
+                println!("{}", &link);
+            }
+
+            Ok(())
+        });
+
+    // Convert the Result to PyResult
+    result.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
 }
 
 #[pymodule]
