@@ -74,7 +74,56 @@ fn outro3(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
-fn get_host_url(url_str: &String) -> Option<String> {
+fn get_host_url(url_str: &str) -> Option<String> {
     let parsed_url = Url::parse(&url_str).unwrap();
     Some(parsed_url.host_str().unwrap().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_host_url() {
+        assert_eq!(
+            get_host_url("http://a.b.c.com"),
+            Some("a.b.c.com".to_string())
+        );
+        assert_eq!(
+            get_host_url("http://a.b.c.com/"),
+            Some("a.b.c.com".to_string())
+        );
+        assert_eq!(
+            get_host_url("http://a.b.c.com/d"),
+            Some("a.b.c.com".to_string())
+        );
+        assert_eq!(
+            get_host_url("https://a.b.c.com/d"),
+            Some("a.b.c.com".to_string())
+        );
+        assert_eq!(
+            get_host_url("https://a.b.c.com/d/"),
+            Some("a.b.c.com".to_string())
+        );
+        assert_eq!(
+            get_host_url("https://a.b.c.com/d/?"),
+            Some("a.b.c.com".to_string())
+        );
+        assert_eq!(
+            get_host_url("https://a.b.c.com/d/?e"),
+            Some("a.b.c.com".to_string())
+        );
+        assert_eq!(
+            get_host_url("https://a.b.c.com/d/?e="),
+            Some("a.b.c.com".to_string())
+        );
+        assert_eq!(
+            get_host_url("https://a.b.c.com/d/?e=f"),
+            Some("a.b.c.com".to_string())
+        );
+        assert_eq!(
+            get_host_url("https://a.b.c.com/d/?e=f#g=h"),
+            Some("a.b.c.com".to_string())
+        );
+    }
 }
