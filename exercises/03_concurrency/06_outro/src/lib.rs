@@ -130,9 +130,12 @@ fn extract_links_from(
             .attr("href")
             .ok_or_else(|| log_error!("Invalid attribute href: {:?}", link_obj))?;
 
-        let link_domain = get_orig_domain(link).ok_or_else(|| log_error!("Bad link: {}", link))?;
+        let resolved_link = resolve_link(&curr_link, link)
+            .ok_or_else(|| log_error!("Could not resolve link {}", link))?;
+        let link_domain =
+            get_orig_domain(&resolved_link).ok_or_else(|| log_error!("Bad link: {}", link))?;
         if link_domain == *orig_domain {
-            sub_site_map.insert(link.to_string());
+            sub_site_map.insert(resolved_link.to_string());
         }
     }
 
@@ -144,6 +147,34 @@ fn extract_links_from(
 fn get_orig_domain(url_str: &str) -> Option<String> {
     let parsed_url = Url::parse(&url_str).unwrap();
     Some(parsed_url.host_str().unwrap().to_string())
+}
+
+fn resolve_link(base_url: &str, href: &str) -> Option<String> {
+    // Skip non-HTTP links
+    if href.starts_with("mailto:")
+        || href.starts_with("tel:")
+        || href.starts_with("javascript:")
+        || href.starts_with("#")
+    {
+        return None;
+    }
+
+    // If it's already a full URL, return as-is if it's HTTP(S)
+    if href.starts_with("http://") || href.starts_with("https://") {
+        return Some(href.to_string());
+    }
+
+    // Try to resolve relative URL
+    if let Ok(base) = Url::parse(base_url) {
+        if let Ok(full_url) = base.join(href) {
+            // Only return HTTP(S) URLs
+            if full_url.scheme() == "http" || full_url.scheme() == "https" {
+                return Some(full_url.to_string());
+            }
+        }
+    }
+
+    None
 }
 
 #[cfg(test)]
