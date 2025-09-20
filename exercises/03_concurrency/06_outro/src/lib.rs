@@ -132,8 +132,10 @@ fn extract_links_from(
 
         let resolved_link = resolve_link(&curr_link, link)
             .ok_or_else(|| log_error!("Could not resolve link {}", link))?;
+
         let link_domain =
             get_orig_domain(&resolved_link).ok_or_else(|| log_error!("Bad link: {}", link))?;
+
         if link_domain == *orig_domain {
             sub_site_map.insert(resolved_link.to_string());
         }
@@ -145,8 +147,7 @@ fn extract_links_from(
 }
 
 fn get_orig_domain(url_str: &str) -> Option<String> {
-    let parsed_url = Url::parse(&url_str).unwrap();
-    Some(parsed_url.host_str().unwrap().to_string())
+    Url::parse(url_str).ok()?.host_str().map(String::from)
 }
 
 fn resolve_link(base_url: &str, href: &str) -> Option<String> {
