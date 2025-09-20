@@ -95,14 +95,30 @@ fn outro3(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
 fn build_site_map(start_from: &String, seed_site_map: &HashSet<String>) -> Result<HashSet<String>> {
     let mut rs_site_map = seed_site_map.clone();
+    let mut visited = seed_site_map.clone();
     println!("start_from = {}", start_from);
 
     let orig_domain =
         get_orig_domain(start_from).ok_or_else(|| log_error!("Invalid URL {}", start_from))?;
     println!("orig_domain = {}", &orig_domain);
 
-    let response = reqwest::blocking::get(start_from)
-        .map_err(|e| log_error!("Could not get the URL {}. Error: {:?}", start_from, e))?;
+    let sub_site_map = extract_links_from(&orig_domain, &start_from, &mut visited)?;
+
+    for link in sub_site_map {
+        rs_site_map.insert(link);
+    }
+
+    Ok(rs_site_map)
+}
+
+fn extract_links_from(
+    orig_domain: &String,
+    curr_link: &String,
+    visited: &mut HashSet<String>,
+) -> Result<HashSet<String>> {
+    let mut sub_site_map: HashSet<String> = HashSet::new();
+    let response = reqwest::blocking::get(curr_link)
+        .map_err(|e| log_error!("Could not get the URL {}. Error: {:?}", curr_link, e))?;
     let html_text = response.text()?;
     let html_doc = scraper::Html::parse_document(&html_text);
     let selector =
@@ -114,10 +130,15 @@ fn build_site_map(start_from: &String, seed_site_map: &HashSet<String>) -> Resul
             .attr("href")
             .ok_or_else(|| log_error!("Invalid attribute href: {:?}", link_obj))?;
 
-        rs_site_map.insert(link.to_string());
+        let link_domain = get_orig_domain(link).ok_or_else(|| log_error!("Bad link: {}", link))?;
+        if link_domain == *orig_domain {
+            sub_site_map.insert(link.to_string());
+        }
     }
 
-    Ok(rs_site_map)
+    visited.insert(curr_link.to_string());
+
+    Ok(sub_site_map)
 }
 
 fn get_orig_domain(url_str: &str) -> Option<String> {
