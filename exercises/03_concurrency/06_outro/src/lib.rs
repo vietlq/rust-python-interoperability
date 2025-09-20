@@ -96,9 +96,9 @@ fn build_site_map(start_from: &String, seed_site_map: &HashSet<String>) -> Resul
     let mut rs_site_map = seed_site_map.clone();
     println!("start_from = {}", start_from);
 
-    let host_url =
-        get_host_url(start_from).ok_or_else(|| log_error!("Invalid URL {}", start_from))?;
-    println!("host_url = {}", &host_url);
+    let orig_domain =
+        get_orig_domain(start_from).ok_or_else(|| log_error!("Invalid URL {}", start_from))?;
+    println!("orig_domain = {}", &orig_domain);
 
     let response = reqwest::blocking::get(start_from)
         .map_err(|e| log_error!("Could not get the URL {}. Error: {:?}", start_from, e))?;
@@ -124,7 +124,7 @@ fn build_site_map(start_from: &String, seed_site_map: &HashSet<String>) -> Resul
     Ok(rs_site_map)
 }
 
-fn get_host_url(url_str: &str) -> Option<String> {
+fn get_orig_domain(url_str: &str) -> Option<String> {
     let parsed_url = Url::parse(&url_str).unwrap();
     Some(parsed_url.host_str().unwrap().to_string())
 }
@@ -134,45 +134,45 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_get_host_url() {
+    fn test_get_orig_domain() {
         assert_eq!(
-            get_host_url("http://a.b.c.com"),
+            get_orig_domain("http://a.b.c.com"),
             Some("a.b.c.com".to_string())
         );
         assert_eq!(
-            get_host_url("http://a.b.c.com/"),
+            get_orig_domain("http://a.b.c.com/"),
             Some("a.b.c.com".to_string())
         );
         assert_eq!(
-            get_host_url("http://a.b.c.com/d"),
+            get_orig_domain("http://a.b.c.com/d"),
             Some("a.b.c.com".to_string())
         );
         assert_eq!(
-            get_host_url("https://a.b.c.com/d"),
+            get_orig_domain("https://a.b.c.com/d"),
             Some("a.b.c.com".to_string())
         );
         assert_eq!(
-            get_host_url("https://a.b.c.com/d/"),
+            get_orig_domain("https://a.b.c.com/d/"),
             Some("a.b.c.com".to_string())
         );
         assert_eq!(
-            get_host_url("https://a.b.c.com/d/?"),
+            get_orig_domain("https://a.b.c.com/d/?"),
             Some("a.b.c.com".to_string())
         );
         assert_eq!(
-            get_host_url("https://a.b.c.com/d/?e"),
+            get_orig_domain("https://a.b.c.com/d/?e"),
             Some("a.b.c.com".to_string())
         );
         assert_eq!(
-            get_host_url("https://a.b.c.com/d/?e="),
+            get_orig_domain("https://a.b.c.com/d/?e="),
             Some("a.b.c.com".to_string())
         );
         assert_eq!(
-            get_host_url("https://a.b.c.com/d/?e=f"),
+            get_orig_domain("https://a.b.c.com/d/?e=f"),
             Some("a.b.c.com".to_string())
         );
         assert_eq!(
-            get_host_url("https://a.b.c.com/d/?e=f#g=h"),
+            get_orig_domain("https://a.b.c.com/d/?e=f#g=h"),
             Some("a.b.c.com".to_string())
         );
     }
