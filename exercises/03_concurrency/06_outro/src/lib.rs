@@ -3,6 +3,7 @@ use pyo3::{prelude::*, types::PySet};
 use reqwest;
 use scraper;
 use std::collections::HashSet;
+use std::sync::{Arc, Mutex};
 use url::Url;
 
 macro_rules! log_info {
@@ -95,14 +96,14 @@ fn outro3(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
 fn build_site_map(start_from: &String, seed_site_map: &HashSet<String>) -> Result<HashSet<String>> {
     let mut rs_site_map = seed_site_map.clone();
-    let mut visited = seed_site_map.clone();
+    let visited: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(seed_site_map.clone()));
     println!("start_from = {}", start_from);
 
     let orig_domain =
         get_orig_domain(start_from).ok_or_else(|| log_error!("Invalid URL {}", start_from))?;
     println!("orig_domain = {}", &orig_domain);
 
-    let sub_site_map = extract_links_from(&orig_domain, &start_from, &mut visited)?;
+    let sub_site_map = extract_links_from(&orig_domain, &start_from, visited)?;
 
     for link in sub_site_map {
         rs_site_map.insert(link);
@@ -112,9 +113,9 @@ fn build_site_map(start_from: &String, seed_site_map: &HashSet<String>) -> Resul
 }
 
 fn extract_links_from(
-    orig_domain: &String,
-    curr_link: &String,
-    visited: &mut HashSet<String>,
+    orig_domain: &str,
+    curr_link: &str,
+    visited: Arc<Mutex<HashSet<String>>>,
 ) -> Result<HashSet<String>> {
     let mut sub_site_map: HashSet<String> = HashSet::new();
     let response = reqwest::blocking::get(curr_link)
@@ -141,7 +142,12 @@ fn extract_links_from(
         }
     }
 
-    visited.insert(curr_link.to_string());
+    {
+        let mut guard = visited
+            .lock()
+            .map_err(|e| log_error!("Mutex was poinsoned: {:?}", e))?;
+        guard.insert(curr_link.to_string());
+    }
 
     Ok(sub_site_map)
 }
