@@ -78,6 +78,7 @@ pub fn site_map<'py>(
         .map(|rs_site_map| {
             // Enrich the python site map from rust site map
             for link in rs_site_map {
+                println!("{}", link);
                 let _ = site_map.add(link).unwrap();
             }
 
@@ -112,13 +113,8 @@ fn build_site_map(start_from: &String, seed_site_map: &HashSet<String>) -> Resul
             .value()
             .attr("href")
             .ok_or_else(|| log_error!("Invalid attribute href: {:?}", link_obj))?;
-        println!("{}", link);
 
         rs_site_map.insert(link.to_string());
-    }
-
-    for link in &rs_site_map {
-        println!("{}", &link);
     }
 
     Ok(rs_site_map)
