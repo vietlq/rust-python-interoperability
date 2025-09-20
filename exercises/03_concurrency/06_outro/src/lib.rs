@@ -65,46 +65,63 @@ pub fn site_map<'py>(
     start_from: String,
     site_map: Bound<'py, PySet>,
 ) -> PyResult<()> {
-    let rs_site_map: HashSet<String> = site_map.extract::<HashSet<String>>()?;
+    // Get the seed site map so we don't fetch the links in the site_map again
+    let seed_site_map: HashSet<String> = site_map.extract::<HashSet<String>>()?;
 
-    let result = python.allow_threads(|| -> Result<()> {
-        println!("start_from = {}", &start_from);
-
-        let host_url =
-            get_host_url(&start_from).ok_or_else(|| log_error!("Invalid URL {}", &start_from))?;
-        println!("host_url = {}", &host_url);
-
-        let response = reqwest::blocking::get(&start_from)
-            .map_err(|e| log_error!("Could not get the URL {}. Error: {:?}", &start_from, e))?;
-        let html_text = response.text()?;
-        let html_doc = scraper::Html::parse_document(&html_text);
-        let selector =
-            scraper::Selector::parse("a").map_err(|e| log_error!("Bad selector: {:?}", e))?;
-
-        for link in html_doc.select(&selector) {
-            println!(
-                "{}",
-                link.value()
-                    .attr("href")
-                    .context("Invalid attribute href")?
-            )
-        }
-
-        for link in &rs_site_map {
-            println!("{}", &link);
-        }
-
-        Ok(())
+    // Build site map without GIL
+    let result = python.allow_threads(|| -> Result<HashSet<String>> {
+        build_site_map(&start_from, &seed_site_map)
     });
 
     // Convert the Result to PyResult
-    result.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    result
+        .map(|rs_site_map| {
+            // Enrich the python site map from rust site map
+            for link in rs_site_map {
+                let _ = site_map.add(link).unwrap();
+            }
+
+            ()
+        })
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
 }
 
 #[pymodule]
 fn outro3(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(site_map, m)?)?;
     Ok(())
+}
+
+fn build_site_map(start_from: &String, seed_site_map: &HashSet<String>) -> Result<HashSet<String>> {
+    let mut rs_site_map = seed_site_map.clone();
+    println!("start_from = {}", start_from);
+
+    let host_url =
+        get_host_url(start_from).ok_or_else(|| log_error!("Invalid URL {}", start_from))?;
+    println!("host_url = {}", &host_url);
+
+    let response = reqwest::blocking::get(start_from)
+        .map_err(|e| log_error!("Could not get the URL {}. Error: {:?}", start_from, e))?;
+    let html_text = response.text()?;
+    let html_doc = scraper::Html::parse_document(&html_text);
+    let selector =
+        scraper::Selector::parse("a").map_err(|e| log_error!("Bad selector: {:?}", e))?;
+
+    for link_obj in html_doc.select(&selector) {
+        let link = link_obj
+            .value()
+            .attr("href")
+            .context("Invalid attribute href")?;
+        println!("{}", link);
+
+        rs_site_map.insert(link.to_string());
+    }
+
+    for link in &rs_site_map {
+        println!("{}", &link);
+    }
+
+    Ok(rs_site_map)
 }
 
 fn get_host_url(url_str: &str) -> Option<String> {
