@@ -111,7 +111,7 @@ fn build_site_map(start_from: &String, seed_site_map: &HashSet<String>) -> Resul
         let link = link_obj
             .value()
             .attr("href")
-            .context("Invalid attribute href")?;
+            .ok_or_else(|| log_error!("Invalid attribute href: {:?}", link_obj))?;
         println!("{}", link);
 
         rs_site_map.insert(link.to_string());
