@@ -5,6 +5,7 @@ use reqwest;
 use scraper;
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::thread;
 use url::Url;
 
 macro_rules! log_info {
@@ -111,18 +112,29 @@ fn build_site_map(
     max_wait_time_s: usize,
     max_concurrency: usize,
 ) -> Result<HashSet<String>> {
-    let rs_site_map: Arc<DashSet<String>> = Arc::new(DashSet::new());
-    let visited: Arc<DashSet<String>> = Arc::new(DashSet::new());
     println!("start_from = {}", start_from);
 
     let orig_domain =
         get_orig_domain(start_from).ok_or_else(|| log_error!("Invalid URL {}", start_from))?;
     println!("orig_domain = {}", &orig_domain);
 
-    let sub_site_map = extract_links_from(&orig_domain, &start_from, visited)?;
+    let mut thread_handles = Vec::new();
 
-    for link in sub_site_map {
-        rs_site_map.insert(link);
+    let rs_site_map: Arc<DashSet<String>> = Arc::new(DashSet::new());
+    let visited: Arc<DashSet<String>> = Arc::new(DashSet::new());
+    for _ in 0..max_concurrency {
+        let orig_domain = orig_domain.clone();
+        let start_from = start_from.clone();
+        let rs_site_map = rs_site_map.clone();
+        let visited = visited.clone();
+        let handle = thread::spawn(move || {
+            let _ = extract_links_from(&orig_domain, &start_from, rs_site_map, visited);
+        });
+        thread_handles.push(handle);
+    }
+
+    for handle in thread_handles {
+        handle.join().unwrap();
     }
 
     let mut result: HashSet<String> = HashSet::new();
@@ -135,8 +147,9 @@ fn build_site_map(
 fn extract_links_from(
     orig_domain: &str,
     curr_link: &str,
+    rs_site_map: Arc<DashSet<String>>,
     visited: Arc<DashSet<String>>,
-) -> Result<HashSet<String>> {
+) -> Result<()> {
     let mut sub_site_map: HashSet<String> = HashSet::new();
     let response = reqwest::blocking::get(curr_link)
         .map_err(|e| log_error!("Could not get the URL {}. Error: {:?}", curr_link, e))?;
@@ -164,7 +177,11 @@ fn extract_links_from(
 
     visited.insert(curr_link.to_string());
 
-    Ok(sub_site_map)
+    for link in sub_site_map {
+        rs_site_map.insert(link);
+    }
+
+    Ok(())
 }
 
 fn get_orig_domain(url_str: &str) -> Option<String> {
