@@ -1,5 +1,5 @@
 use anyhow::Result;
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use crossbeam_channel::{unbounded, Receiver, RecvTimeoutError, Sender};
 use dashmap::DashSet;
 use pyo3::{prelude::*, types::PySet};
 use reqwest;
@@ -118,6 +118,7 @@ fn build_site_map(
     let duration = Duration::from_secs(max_wait_time_s);
     let (sender, receiver) = unbounded();
     sender.send(start_from)?;
+    let sender_keeper = sender.clone();
 
     for tid in 0..max_concurrency {
         let orig_domain = orig_domain.clone();
@@ -142,6 +143,8 @@ fn build_site_map(
         });
         thread_handles.push(handle);
     }
+
+    drop(sender_keeper);
 
     for handle in thread_handles {
         handle.join().unwrap();
@@ -169,57 +172,72 @@ fn extract_links_from(
             return Ok(());
         }
 
-        if let Ok(curr_link) = receiver.recv_timeout(max_wait_time) {
-            if rs_site_map.len() >= max_links {
-                return Ok(());
-            }
-
-            if visited.contains(&curr_link) {
-                continue;
-            }
-
-            log_info!("[Thread {}] processing the link {}", tid, curr_link);
-
-            let mut sub_site_map: HashSet<String> = HashSet::new();
-            let response = reqwest::blocking::get(&curr_link)
-                .map_err(|e| log_error!("Could not get the URL {}. Error: {:?}", &curr_link, e))?;
-            let html_text = response.text()?;
-            let html_doc = scraper::Html::parse_document(&html_text);
-
-            // Extract src from <iframe>
-            extract_links_from_element(
-                tid,
-                &html_doc,
-                &curr_link,
-                orig_domain,
-                &mut sub_site_map,
-                "iframe",
-                "src",
-            )?;
-            // Extract href from <a>
-            extract_links_from_element(
-                tid,
-                &html_doc,
-                &curr_link,
-                orig_domain,
-                &mut sub_site_map,
-                "a",
-                "href",
-            )?;
-
-            for new_link in sub_site_map {
-                if !visited.contains(&new_link) {
-                    log_info!("[Thread {}] queuing the link {}", tid, &new_link);
-                    sender.send(new_link.clone())?;
+        match receiver.recv_timeout(max_wait_time) {
+            Ok(curr_link) => {
+                if rs_site_map.len() >= max_links {
+                    return Ok(());
                 }
 
-                rs_site_map.insert(new_link);
-            }
+                if visited.contains(&curr_link) {
+                    continue;
+                }
 
-            visited.insert(curr_link.to_string());
-            log_info!("[Thread {}] **processed** the link {}", tid, curr_link);
-        } else {
-            return Ok(());
+                log_info!("[Thread {}] processing the link {}", tid, curr_link);
+
+                let mut sub_site_map: HashSet<String> = HashSet::new();
+                let response = reqwest::blocking::get(&curr_link).map_err(|e| {
+                    log_error!("Could not get the URL {}. Error: {:?}", &curr_link, e)
+                })?;
+                let html_text = response.text()?;
+                let html_doc = scraper::Html::parse_document(&html_text);
+
+                // Extract src from <iframe>
+                extract_links_from_element(
+                    tid,
+                    &html_doc,
+                    &curr_link,
+                    orig_domain,
+                    &mut sub_site_map,
+                    "iframe",
+                    "src",
+                )?;
+                // Extract href from <a>
+                extract_links_from_element(
+                    tid,
+                    &html_doc,
+                    &curr_link,
+                    orig_domain,
+                    &mut sub_site_map,
+                    "a",
+                    "href",
+                )?;
+
+                for new_link in sub_site_map {
+                    if !visited.contains(&new_link) {
+                        log_info!("[Thread {}] queuing the link {}", tid, &new_link);
+                        sender.send(new_link.clone())?;
+                    }
+
+                    rs_site_map.insert(new_link);
+                }
+
+                visited.insert(curr_link.to_string());
+                log_info!("[Thread {}] **processed** the link {}", tid, curr_link);
+            }
+            Err(RecvTimeoutError::Timeout) => {
+                // Check if we should continue waiting
+                if rs_site_map.len() >= max_links {
+                    return Ok(());
+                }
+
+                log_info!("[Thread {}] Timeout, so exiting", tid);
+                return Ok(());
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                // Channel is closed, exit
+                log_info!("[Thread {}] Channel disconnected, exiting", tid);
+                return Ok(());
+            }
         }
     }
 }
