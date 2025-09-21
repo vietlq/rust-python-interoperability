@@ -185,25 +185,27 @@ fn extract_links_from(
                 .map_err(|e| log_error!("Could not get the URL {}. Error: {:?}", &curr_link, e))?;
             let html_text = response.text()?;
             let html_doc = scraper::Html::parse_document(&html_text);
-            let selector =
-                scraper::Selector::parse("a").map_err(|e| log_error!("Bad selector: {:?}", e))?;
 
-            for link_obj in html_doc.select(&selector) {
-                let link = link_obj
-                    .value()
-                    .attr("href")
-                    .ok_or_else(|| log_error!("Invalid attribute href: {:?}", link_obj))?;
-
-                let resolved_link = resolve_link(&curr_link, link)
-                    .ok_or_else(|| log_error!("Could not resolve link {}", link))?;
-
-                let link_domain = get_orig_domain(&resolved_link)
-                    .ok_or_else(|| log_error!("Bad link: {}", link))?;
-
-                if link_domain == *orig_domain {
-                    sub_site_map.insert(resolved_link.to_string());
-                }
-            }
+            // Extract href from <a>
+            extract_links_from_element(
+                tid,
+                &html_doc,
+                &curr_link,
+                orig_domain,
+                &mut sub_site_map,
+                "a",
+                "href",
+            )?;
+            // Extract src from <iframe>
+            extract_links_from_element(
+                tid,
+                &html_doc,
+                &curr_link,
+                orig_domain,
+                &mut sub_site_map,
+                "iframe",
+                "src",
+            )?;
 
             for new_link in sub_site_map {
                 if !visited.contains(&new_link) {
@@ -219,6 +221,51 @@ fn extract_links_from(
             return Ok(());
         }
     }
+}
+
+fn extract_links_from_element(
+    tid: u64,
+    html_doc: &scraper::Html,
+    curr_link: &str,
+    orig_domain: &str,
+    sub_site_map: &mut HashSet<String>,
+    element: &str,
+    attr: &str,
+) -> Result<()> {
+    log_info!(
+        "[Thread {}] extracting links from <{} {}='...'>",
+        tid,
+        element,
+        attr
+    );
+
+    let selector =
+        scraper::Selector::parse(element).map_err(|e| log_error!("Bad selector: {:?}", e))?;
+
+    for link_obj in html_doc.select(&selector) {
+        let link = link_obj
+            .value()
+            .attr(attr)
+            .ok_or_else(|| log_error!("Invalid attribute {}: {:?}", attr, link_obj))?;
+
+        let resolved_link = resolve_link(&curr_link, link)
+            .ok_or_else(|| log_error!("Could not resolve link {}", link))?;
+
+        let link_domain =
+            get_orig_domain(&resolved_link).ok_or_else(|| log_error!("Bad link: {}", link))?;
+        log_info!("[Thread {}] resolved_link = {}", tid, resolved_link);
+
+        if link_domain == *orig_domain {
+            sub_site_map.insert(resolved_link.to_string());
+        }
+
+        log_info!(
+            "[Thread {}] finished extracting links from <a href='...'>",
+            tid
+        );
+    }
+
+    Ok(())
 }
 
 fn get_orig_domain(url_str: &str) -> Option<String> {
