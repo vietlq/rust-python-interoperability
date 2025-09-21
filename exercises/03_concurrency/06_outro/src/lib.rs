@@ -1,9 +1,10 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
+use dashmap::DashSet;
 use pyo3::{prelude::*, types::PySet};
 use reqwest;
 use scraper;
 use std::collections::HashSet;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use url::Url;
 
 macro_rules! log_info {
@@ -71,7 +72,16 @@ pub fn site_map<'py>(
 
     // Build site map without GIL
     let result = python.allow_threads(|| -> Result<HashSet<String>> {
-        build_site_map(&start_from, &seed_site_map)
+        let max_links = 200;
+        let max_wait_time_s = 10;
+        let max_concurrency = 8;
+        build_site_map(
+            &start_from,
+            &seed_site_map,
+            max_links,
+            max_wait_time_s,
+            max_concurrency,
+        )
     });
 
     // Convert the Result to PyResult
@@ -94,9 +104,15 @@ fn outro3(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
-fn build_site_map(start_from: &String, seed_site_map: &HashSet<String>) -> Result<HashSet<String>> {
-    let mut rs_site_map = seed_site_map.clone();
-    let visited: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(seed_site_map.clone()));
+fn build_site_map(
+    start_from: &String,
+    seed_site_map: &HashSet<String>,
+    max_links: usize,
+    max_wait_time_s: usize,
+    max_concurrency: usize,
+) -> Result<HashSet<String>> {
+    let rs_site_map: Arc<DashSet<String>> = Arc::new(DashSet::new());
+    let visited: Arc<DashSet<String>> = Arc::new(DashSet::new());
     println!("start_from = {}", start_from);
 
     let orig_domain =
@@ -109,13 +125,17 @@ fn build_site_map(start_from: &String, seed_site_map: &HashSet<String>) -> Resul
         rs_site_map.insert(link);
     }
 
-    Ok(rs_site_map)
+    let mut result: HashSet<String> = HashSet::new();
+    rs_site_map.iter().for_each(|x| {
+        result.insert(x.to_string());
+    });
+    Ok(result)
 }
 
 fn extract_links_from(
     orig_domain: &str,
     curr_link: &str,
-    visited: Arc<Mutex<HashSet<String>>>,
+    visited: Arc<DashSet<String>>,
 ) -> Result<HashSet<String>> {
     let mut sub_site_map: HashSet<String> = HashSet::new();
     let response = reqwest::blocking::get(curr_link)
@@ -142,12 +162,7 @@ fn extract_links_from(
         }
     }
 
-    {
-        let mut guard = visited
-            .lock()
-            .map_err(|e| log_error!("Mutex was poinsoned: {:?}", e))?;
-        guard.insert(curr_link.to_string());
-    }
+    visited.insert(curr_link.to_string());
 
     Ok(sub_site_map)
 }
