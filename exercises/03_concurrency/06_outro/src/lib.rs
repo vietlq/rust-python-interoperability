@@ -1,4 +1,5 @@
 use anyhow::Result;
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use dashmap::DashSet;
 use pyo3::{prelude::*, types::PySet};
 use reqwest;
@@ -6,6 +7,7 @@ use scraper;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
 use url::Url;
 
 macro_rules! log_info {
@@ -68,21 +70,12 @@ pub fn site_map<'py>(
     start_from: String,
     site_map: Bound<'py, PySet>,
 ) -> PyResult<()> {
-    // Get the seed site map so we don't fetch the links in the site_map again
-    let seed_site_map: HashSet<String> = site_map.extract::<HashSet<String>>()?;
-
     // Build site map without GIL
     let result = python.allow_threads(|| -> Result<HashSet<String>> {
         let max_links = 200;
-        let max_wait_time_s = 10;
+        let max_wait_time_s = 30;
         let max_concurrency = 8;
-        build_site_map(
-            &start_from,
-            &seed_site_map,
-            max_links,
-            max_wait_time_s,
-            max_concurrency,
-        )
+        build_site_map(&start_from, max_links, max_wait_time_s, max_concurrency)
     });
 
     // Convert the Result to PyResult
@@ -107,10 +100,9 @@ fn outro3(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
 fn build_site_map(
     start_from: &String,
-    seed_site_map: &HashSet<String>,
     max_links: usize,
-    max_wait_time_s: usize,
-    max_concurrency: usize,
+    max_wait_time_s: u64,
+    max_concurrency: u64,
 ) -> Result<HashSet<String>> {
     println!("start_from = {}", start_from);
 
@@ -122,13 +114,31 @@ fn build_site_map(
 
     let rs_site_map: Arc<DashSet<String>> = Arc::new(DashSet::new());
     let visited: Arc<DashSet<String>> = Arc::new(DashSet::new());
-    for _ in 0..max_concurrency {
+    let start_from = start_from.clone();
+    let duration = Duration::from_secs(max_wait_time_s);
+    let (sender, receiver) = unbounded();
+    sender.send(start_from)?;
+
+    for tid in 0..max_concurrency {
         let orig_domain = orig_domain.clone();
-        let start_from = start_from.clone();
+        let sender = sender.clone();
+        let receiver = receiver.clone();
         let rs_site_map = rs_site_map.clone();
         let visited = visited.clone();
+        let max_links = max_links.clone();
+        let duration = duration.clone();
+
         let handle = thread::spawn(move || {
-            let _ = extract_links_from(&orig_domain, &start_from, rs_site_map, visited);
+            let _ = extract_links_from(
+                tid,
+                &orig_domain,
+                sender,
+                receiver,
+                rs_site_map,
+                visited,
+                max_links,
+                duration,
+            );
         });
         thread_handles.push(handle);
     }
@@ -145,43 +155,70 @@ fn build_site_map(
 }
 
 fn extract_links_from(
+    tid: u64,
     orig_domain: &str,
-    curr_link: &str,
+    sender: Sender<String>,
+    receiver: Receiver<String>,
     rs_site_map: Arc<DashSet<String>>,
     visited: Arc<DashSet<String>>,
+    max_links: usize,
+    max_wait_time: Duration,
 ) -> Result<()> {
-    let mut sub_site_map: HashSet<String> = HashSet::new();
-    let response = reqwest::blocking::get(curr_link)
-        .map_err(|e| log_error!("Could not get the URL {}. Error: {:?}", curr_link, e))?;
-    let html_text = response.text()?;
-    let html_doc = scraper::Html::parse_document(&html_text);
-    let selector =
-        scraper::Selector::parse("a").map_err(|e| log_error!("Bad selector: {:?}", e))?;
+    loop {
+        if rs_site_map.len() >= max_links {
+            return Ok(());
+        }
 
-    for link_obj in html_doc.select(&selector) {
-        let link = link_obj
-            .value()
-            .attr("href")
-            .ok_or_else(|| log_error!("Invalid attribute href: {:?}", link_obj))?;
+        if let Ok(curr_link) = receiver.recv_timeout(max_wait_time) {
+            if rs_site_map.len() >= max_links {
+                return Ok(());
+            }
 
-        let resolved_link = resolve_link(&curr_link, link)
-            .ok_or_else(|| log_error!("Could not resolve link {}", link))?;
+            if visited.contains(&curr_link) {
+                continue;
+            }
 
-        let link_domain =
-            get_orig_domain(&resolved_link).ok_or_else(|| log_error!("Bad link: {}", link))?;
+            log_info!("[Thread {}] processing the link {}", tid, curr_link);
 
-        if link_domain == *orig_domain {
-            sub_site_map.insert(resolved_link.to_string());
+            let mut sub_site_map: HashSet<String> = HashSet::new();
+            let response = reqwest::blocking::get(&curr_link)
+                .map_err(|e| log_error!("Could not get the URL {}. Error: {:?}", &curr_link, e))?;
+            let html_text = response.text()?;
+            let html_doc = scraper::Html::parse_document(&html_text);
+            let selector =
+                scraper::Selector::parse("a").map_err(|e| log_error!("Bad selector: {:?}", e))?;
+
+            for link_obj in html_doc.select(&selector) {
+                let link = link_obj
+                    .value()
+                    .attr("href")
+                    .ok_or_else(|| log_error!("Invalid attribute href: {:?}", link_obj))?;
+
+                let resolved_link = resolve_link(&curr_link, link)
+                    .ok_or_else(|| log_error!("Could not resolve link {}", link))?;
+
+                let link_domain = get_orig_domain(&resolved_link)
+                    .ok_or_else(|| log_error!("Bad link: {}", link))?;
+
+                if link_domain == *orig_domain {
+                    sub_site_map.insert(resolved_link.to_string());
+                }
+            }
+
+            for new_link in sub_site_map {
+                if !visited.contains(&new_link) {
+                    log_info!("[Thread {}] queuing the link {}", tid, &new_link);
+                    sender.send(new_link.clone())?;
+                }
+
+                rs_site_map.insert(new_link);
+            }
+
+            visited.insert(curr_link.to_string());
+        } else {
+            return Ok(());
         }
     }
-
-    visited.insert(curr_link.to_string());
-
-    for link in sub_site_map {
-        rs_site_map.insert(link);
-    }
-
-    Ok(())
 }
 
 fn get_orig_domain(url_str: &str) -> Option<String> {
