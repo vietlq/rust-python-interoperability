@@ -186,16 +186,6 @@ fn extract_links_from(
             let html_text = response.text()?;
             let html_doc = scraper::Html::parse_document(&html_text);
 
-            // Extract href from <a>
-            extract_links_from_element(
-                tid,
-                &html_doc,
-                &curr_link,
-                orig_domain,
-                &mut sub_site_map,
-                "a",
-                "href",
-            )?;
             // Extract src from <iframe>
             extract_links_from_element(
                 tid,
@@ -205,6 +195,16 @@ fn extract_links_from(
                 &mut sub_site_map,
                 "iframe",
                 "src",
+            )?;
+            // Extract href from <a>
+            extract_links_from_element(
+                tid,
+                &html_doc,
+                &curr_link,
+                orig_domain,
+                &mut sub_site_map,
+                "a",
+                "href",
             )?;
 
             for new_link in sub_site_map {
@@ -217,6 +217,7 @@ fn extract_links_from(
             }
 
             visited.insert(curr_link.to_string());
+            log_info!("[Thread {}] **processed** the link {}", tid, curr_link);
         } else {
             return Ok(());
         }
