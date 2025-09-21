@@ -119,6 +119,7 @@ fn build_site_map(
     let (sender, receiver) = unbounded();
     sender.send(start_from)?;
     let sender_keeper = sender.clone();
+    let receiver_keeper = receiver.clone();
 
     for tid in 0..max_concurrency {
         let orig_domain = orig_domain.clone();
@@ -144,11 +145,12 @@ fn build_site_map(
         thread_handles.push(handle);
     }
 
-    drop(sender_keeper);
-
     for handle in thread_handles {
         handle.join().unwrap();
     }
+
+    drop(sender_keeper);
+    drop(receiver_keeper);
 
     let mut result: HashSet<String> = HashSet::new();
     rs_site_map.iter().for_each(|x| {
@@ -182,7 +184,7 @@ fn extract_links_from(
                     continue;
                 }
 
-                log_info!("[Thread {}] processing the link {}", tid, curr_link);
+                log_info!("[Thread {}] <<< processing the link {}", tid, curr_link);
 
                 let mut sub_site_map: HashSet<String> = HashSet::new();
                 let response = reqwest::blocking::get(&curr_link).map_err(|e| {
@@ -214,7 +216,7 @@ fn extract_links_from(
 
                 for new_link in sub_site_map {
                     if !visited.contains(&new_link) {
-                        log_info!("[Thread {}] queuing the link {}", tid, &new_link);
+                        log_info!("[Thread {}] >>> queuing the link {}", tid, &new_link);
                         sender.send(new_link.clone())?;
                     }
 
