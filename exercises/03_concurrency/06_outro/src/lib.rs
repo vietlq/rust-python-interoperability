@@ -215,9 +215,15 @@ fn extract_links_from(
                 )?;
 
                 for new_link in sub_site_map {
+                    log_info!("[Thread {}] >>> queuing the link {}", tid, &new_link);
+                    sender
+                        .send(new_link.clone())
+                        .map_err(|e| log_error!("Got an error during sending: {}", e))?;
                     if !visited.contains(&new_link) {
                         log_info!("[Thread {}] >>> queuing the link {}", tid, &new_link);
-                        sender.send(new_link.clone())?;
+                        sender
+                            .send(new_link.clone())
+                            .map_err(|e| log_error!("Got an error during sending: {}", e))?;
                     }
 
                     rs_site_map.insert(new_link);
@@ -277,6 +283,11 @@ fn extract_links_from_element(
         log_info!("[Thread {}] resolved_link = {}", tid, resolved_link);
 
         if link_domain == *orig_domain {
+            log_info!(
+                "[Thread {}] adding the resolved_link = {}",
+                tid,
+                resolved_link
+            );
             sub_site_map.insert(resolved_link.to_string());
         }
 
