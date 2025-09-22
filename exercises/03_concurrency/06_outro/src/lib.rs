@@ -156,15 +156,12 @@ fn build_site_map(
         thread_handles.push(handle);
     }
 
-    // Drop the keeper after a reasonable time to allow threads to eventually stop
-    thread::spawn(move || {
-        thread::sleep(Duration::from_secs(max_wait_time_s));
-        drop(_sender_keeper);
-    });
-
     for handle in thread_handles {
         handle.join().unwrap();
     }
+
+    // Drop the keeper after a reasonable time to allow threads to eventually stop
+    drop(_sender_keeper);
 
     let mut result: HashSet<String> = HashSet::new();
     rs_site_map.iter().for_each(|x| {
