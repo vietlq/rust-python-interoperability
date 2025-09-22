@@ -8,13 +8,11 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
+use tracing::{error, info, warn};
+use tracing_subscriber;
+use tracing_subscriber::fmt::format::FmtSpan;
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 use url::Url;
-
-macro_rules! log_info {
-    ($($arg:tt)*) => {
-        println!("[{}:{}] {}", file!(), line!(), format!($($arg)*))
-    };
-}
 
 macro_rules! log_error {
     ($($arg:tt)*) => {
@@ -70,6 +68,18 @@ pub fn site_map<'py>(
     start_from: String,
     site_map: Bound<'py, PySet>,
 ) -> PyResult<()> {
+    // Initialize tracing with file/line info and thread details
+    tracing_subscriber::registry()
+        .with(
+            fmt::layer()
+                .with_file(true) // Show file names
+                .with_line_number(true) // Show line numbers
+                .with_thread_ids(true) // Show thread IDs
+                .with_thread_names(true) // Show thread names
+                .with_target(true), // Show module target
+        )
+        .init();
+
     // Build site map without GIL
     let result = python.allow_threads(|| -> Result<HashSet<String>> {
         let max_links = 200;
@@ -118,8 +128,7 @@ fn build_site_map(
     let duration = Duration::from_secs(max_wait_time_s);
     let (sender, receiver) = unbounded();
     sender.send(start_from)?;
-    let sender_keeper = sender.clone();
-    let receiver_keeper = receiver.clone();
+    let receiver = Arc::new(receiver);
 
     for tid in 0..max_concurrency {
         let orig_domain = orig_domain.clone();
@@ -149,9 +158,6 @@ fn build_site_map(
         handle.join().unwrap();
     }
 
-    drop(sender_keeper);
-    drop(receiver_keeper);
-
     let mut result: HashSet<String> = HashSet::new();
     rs_site_map.iter().for_each(|x| {
         result.insert(x.to_string());
@@ -163,7 +169,7 @@ fn extract_links_from(
     tid: u64,
     orig_domain: &str,
     sender: Sender<String>,
-    receiver: Receiver<String>,
+    receiver: Arc<Receiver<String>>,
     rs_site_map: Arc<DashSet<String>>,
     visited: Arc<DashSet<String>>,
     max_links: usize,
@@ -184,7 +190,7 @@ fn extract_links_from(
                     continue;
                 }
 
-                log_info!("[Thread {}] <<< processing the link {}", tid, curr_link);
+                info!("[Thread {}] <<< processing the link {}", tid, curr_link);
 
                 let mut sub_site_map: HashSet<String> = HashSet::new();
                 let response = reqwest::blocking::get(&curr_link).map_err(|e| {
@@ -194,7 +200,7 @@ fn extract_links_from(
                 let html_doc = scraper::Html::parse_document(&html_text);
 
                 for (element, attr) in vec![("a", "href"), ("iframe", "src")] {
-                    log_info!(
+                    info!(
                         "[Thread {}] ^^^ the size of sub_site_map BEFORE extraction from element {}: {}",
                         tid, element, sub_site_map.len());
 
@@ -208,7 +214,7 @@ fn extract_links_from(
                         attr,
                     )?;
 
-                    log_info!(
+                    info!(
                         "[Thread {}] $$$ the size of sub_site_map AFTER extraction from element {}: {}",
                         tid,
                         element,
@@ -218,15 +224,14 @@ fn extract_links_from(
 
                 for new_link in sub_site_map {
                     if !visited.contains(&new_link) {
-                        log_info!("[Thread {}] >>> queuing the link {}", tid, &new_link);
+                        info!("[Thread {}] >>> queuing the link {}", tid, &new_link);
                         sender
                             .send(new_link.clone())
                             .map_err(|e| log_error!("Got an error during sending: {}", e))?;
                     } else {
-                        log_info!(
+                        info!(
                             "[Thread {}] already visited link {}, skipping",
-                            tid,
-                            &new_link
+                            tid, &new_link
                         );
                     }
 
@@ -234,7 +239,7 @@ fn extract_links_from(
                 }
 
                 visited.insert(curr_link.to_string());
-                log_info!("[Thread {}] **processed** the link {}", tid, curr_link);
+                info!("[Thread {}] **processed** the link {}", tid, curr_link);
             }
             Err(RecvTimeoutError::Timeout) => {
                 // Check if we should continue waiting
@@ -242,12 +247,12 @@ fn extract_links_from(
                     return Ok(());
                 }
 
-                log_info!("[Thread {}] Timeout, so exiting", tid);
+                info!("[Thread {}] Timeout, so exiting", tid);
                 return Ok(());
             }
             Err(RecvTimeoutError::Disconnected) => {
                 // Channel is closed, exit
-                log_info!("[Thread {}] Channel disconnected, exiting", tid);
+                info!("[Thread {}] Channel disconnected, exiting", tid);
                 return Ok(());
             }
         }
@@ -263,11 +268,9 @@ fn extract_links_from_element(
     element: &str,
     attr: &str,
 ) -> Result<()> {
-    log_info!(
+    info!(
         "[Thread {}] extracting links from <{} {}='...'>",
-        tid,
-        element,
-        attr
+        tid, element, attr
     );
 
     let selector =
@@ -284,18 +287,17 @@ fn extract_links_from_element(
 
         let link_domain =
             get_orig_domain(&resolved_link).ok_or_else(|| log_error!("Bad link: {}", link))?;
-        log_info!("[Thread {}] resolved_link = {}", tid, resolved_link);
+        info!("[Thread {}] resolved_link = {}", tid, resolved_link);
 
         if link_domain == *orig_domain {
-            log_info!(
+            info!(
                 "[Thread {}] adding the resolved_link = {}",
-                tid,
-                resolved_link
+                tid, resolved_link
             );
             sub_site_map.insert(resolved_link.to_string());
         }
 
-        log_info!(
+        info!(
             "[Thread {}] finished extracting links from <a href='...'>",
             tid
         );
