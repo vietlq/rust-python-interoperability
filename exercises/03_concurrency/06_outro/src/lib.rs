@@ -114,20 +114,23 @@ fn build_site_map(
     max_wait_time_s: u64,
     max_concurrency: u64,
 ) -> Result<HashSet<String>> {
-    println!("start_from = {}", start_from);
+    info!("start_from = {}", start_from);
 
     let orig_domain =
         get_orig_domain(start_from).ok_or_else(|| log_error!("Invalid URL {}", start_from))?;
-    println!("orig_domain = {}", &orig_domain);
+    info!("orig_domain = {}", &orig_domain);
 
     let mut thread_handles = Vec::new();
 
     let rs_site_map: Arc<DashSet<String>> = Arc::new(DashSet::new());
     let visited: Arc<DashSet<String>> = Arc::new(DashSet::new());
-    let start_from = start_from.clone();
-    let duration = Duration::from_secs(max_wait_time_s);
     let (sender, receiver) = unbounded();
-    sender.send(start_from)?;
+
+    // Send initial URL
+    sender.send(start_from.clone())?;
+
+    // Keep a sender reference to prevent channel from closing
+    let _sender_keeper = sender.clone();
 
     for tid in 0..max_concurrency {
         let orig_domain = orig_domain.clone();
@@ -135,23 +138,29 @@ fn build_site_map(
         let receiver = receiver.clone();
         let rs_site_map = rs_site_map.clone();
         let visited = visited.clone();
-        let max_links = max_links.clone();
-        let duration = duration.clone();
 
-        let handle = thread::spawn(move || {
-            let _ = extract_links_from(
-                tid,
-                &orig_domain,
-                sender,
-                receiver,
-                rs_site_map,
-                visited,
-                max_links,
-                duration,
-            );
-        });
+        let handle = thread::Builder::new()
+            .name(format!("crawler-{}", tid))
+            .spawn(move || {
+                let _ = extract_links_from(
+                    tid,
+                    &orig_domain,
+                    sender,
+                    receiver,
+                    rs_site_map,
+                    visited,
+                    max_links,
+                    max_wait_time_s,
+                );
+            })?;
         thread_handles.push(handle);
     }
+
+    // Drop the keeper after a reasonable time to allow threads to eventually stop
+    thread::spawn(move || {
+        thread::sleep(Duration::from_secs(max_wait_time_s));
+        drop(_sender_keeper);
+    });
 
     for handle in thread_handles {
         handle.join().unwrap();
@@ -172,85 +181,121 @@ fn extract_links_from(
     rs_site_map: Arc<DashSet<String>>,
     visited: Arc<DashSet<String>>,
     max_links: usize,
-    max_wait_time: Duration,
+    max_wait_time_s: u64,
 ) -> Result<()> {
+    let short_timeout = Duration::from_millis(500); // Short timeout for checking
+    let max_idle_time = Duration::from_secs(max_wait_time_s);
+    let mut last_work_time = std::time::Instant::now();
+
     loop {
         if rs_site_map.len() >= max_links {
+            info!("[Thread {}] Reached max_links {}, exiting", tid, max_links);
             return Ok(());
         }
 
-        match receiver.recv_timeout(max_wait_time) {
+        match receiver.recv_timeout(short_timeout) {
             Ok(curr_link) => {
+                last_work_time = std::time::Instant::now(); // Reset idle timer
+
                 if rs_site_map.len() >= max_links {
                     return Ok(());
                 }
 
                 if visited.contains(&curr_link) {
+                    info!("[Thread {}] Already visited {}, skipping", tid, curr_link);
                     continue;
                 }
 
                 info!("[Thread {}] <<< processing the link {}", tid, curr_link);
 
-                let mut sub_site_map: HashSet<String> = HashSet::new();
-                let response = reqwest::blocking::get(&curr_link).map_err(|e| {
-                    log_error!("Could not get the URL {}. Error: {:?}", &curr_link, e)
-                })?;
-                let html_text = response.text()?;
-                let html_doc = scraper::Html::parse_document(&html_text);
+                match reqwest::blocking::get(&curr_link) {
+                    Ok(response) => {
+                        match response.text() {
+                            Ok(html_text) => {
+                                let html_doc = scraper::Html::parse_document(&html_text);
+                                let mut sub_site_map: HashSet<String> = HashSet::new();
 
-                for (element, attr) in vec![("a", "href"), ("iframe", "src")] {
-                    info!(
-                        "[Thread {}] ^^^ the size of sub_site_map BEFORE extraction from element {}: {}",
-                        tid, element, sub_site_map.len());
+                                for (element, attr) in vec![("a", "href"), ("iframe", "src")] {
+                                    info!(
+                                        "[Thread {}] ^^^ the size of sub_site_map BEFORE extraction from element {}: {}",
+                                        tid, element, sub_site_map.len()
+                                    );
 
-                    extract_links_from_element(
-                        tid,
-                        &html_doc,
-                        &curr_link,
-                        orig_domain,
-                        &mut sub_site_map,
-                        element,
-                        attr,
-                    )?;
+                                    let _ = extract_links_from_element(
+                                        tid,
+                                        &html_doc,
+                                        &curr_link,
+                                        orig_domain,
+                                        &mut sub_site_map,
+                                        element,
+                                        attr,
+                                    );
 
-                    info!(
-                        "[Thread {}] $$$ the size of sub_site_map AFTER extraction from element {}: {}",
-                        tid,
-                        element,
-                        sub_site_map.len(),
-                    );
-                }
+                                    info!(
+                                        "[Thread {}] $$$ the size of sub_site_map AFTER extraction from element {}: {}",
+                                        tid,
+                                        element,
+                                        sub_site_map.len(),
+                                    );
+                                }
 
-                for new_link in sub_site_map {
-                    if !visited.contains(&new_link) {
-                        info!("[Thread {}] >>> queuing the link {}", tid, &new_link);
-                        sender
-                            .send(new_link.clone())
-                            .map_err(|e| log_error!("Got an error during sending: {}", e))?;
-                    } else {
-                        info!(
-                            "[Thread {}] already visited link {}, skipping",
-                            tid, &new_link
-                        );
+                                // Process discovered links
+                                for new_link in sub_site_map {
+                                    if !visited.contains(&new_link)
+                                        && !rs_site_map.contains(&new_link)
+                                    {
+                                        info!(
+                                            "[Thread {}] >>> queuing the link {}",
+                                            tid, &new_link
+                                        );
+                                        let _ = sender.send(new_link.clone());
+                                    }
+                                    rs_site_map.insert(new_link);
+                                }
+
+                                visited.insert(curr_link.to_string());
+                                info!(
+                                    "[Thread {}] **processed** the link {} (total discovered: {})",
+                                    tid,
+                                    curr_link,
+                                    rs_site_map.len()
+                                );
+                            }
+                            Err(e) => {
+                                error!(
+                                    "[Thread {}] Failed to read response text from {}: {}",
+                                    tid, curr_link, e
+                                );
+                            }
+                        }
                     }
-
-                    rs_site_map.insert(new_link);
+                    Err(e) => {
+                        error!("[Thread {}] Failed to fetch {}: {}", tid, curr_link, e);
+                    }
                 }
-
-                visited.insert(curr_link.to_string());
-                info!("[Thread {}] **processed** the link {}", tid, curr_link);
             }
             Err(RecvTimeoutError::Timeout) => {
-                // Check if we should continue waiting
+                // Check if we should continue waiting or exit
                 if rs_site_map.len() >= max_links {
+                    info!("[Thread {}] Reached max_links on timeout, exiting", tid);
                     return Ok(());
                 }
 
-                info!("[Thread {}] Timeout, so exiting", tid);
-                return Ok(());
+                // Check if we've been idle too long
+                if last_work_time.elapsed() > max_idle_time {
+                    info!("[Thread {}] Idle timeout reached, exiting", tid);
+                    return Ok(());
+                }
+
+                // Continue waiting for work
+                info!(
+                    "[Thread {}] Waiting for work... (idle for {:?})",
+                    tid,
+                    last_work_time.elapsed()
+                );
+                continue;
             }
             Err(RecvTimeoutError::Disconnected) => {
-                // Channel is closed, exit
                 info!("[Thread {}] Channel disconnected, exiting", tid);
                 return Ok(());
             }
