@@ -8,9 +8,8 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info};
 use tracing_subscriber;
-use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 use url::Url;
 
@@ -70,6 +69,7 @@ pub fn site_map<'py>(
 ) -> PyResult<()> {
     // Initialize tracing with file/line info and thread details
     tracing_subscriber::registry()
+        .with(tracing_subscriber::filter::LevelFilter::INFO)
         .with(
             fmt::layer()
                 .with_file(true) // Show file names
@@ -289,7 +289,7 @@ fn extract_links_from(
                 }
 
                 // Continue waiting for work
-                info!(
+                debug!(
                     "[Thread {}] Waiting for work... (idle for {:?})",
                     tid,
                     last_work_time.elapsed()
