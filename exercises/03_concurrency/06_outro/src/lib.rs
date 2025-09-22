@@ -128,7 +128,6 @@ fn build_site_map(
     let duration = Duration::from_secs(max_wait_time_s);
     let (sender, receiver) = unbounded();
     sender.send(start_from)?;
-    let receiver = Arc::new(receiver);
 
     for tid in 0..max_concurrency {
         let orig_domain = orig_domain.clone();
@@ -169,7 +168,7 @@ fn extract_links_from(
     tid: u64,
     orig_domain: &str,
     sender: Sender<String>,
-    receiver: Arc<Receiver<String>>,
+    receiver: Receiver<String>,
     rs_site_map: Arc<DashSet<String>>,
     visited: Arc<DashSet<String>>,
     max_links: usize,
