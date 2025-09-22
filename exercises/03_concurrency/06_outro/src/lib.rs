@@ -190,6 +190,10 @@ fn extract_links_from(
             return Ok(());
         }
 
+        // The key is to do short timeouts, then keep accumulating the idle time.
+        // Reset last_work_time whenever there's a new message.
+        // If we use recv_timeout(max_idle_time), likely the thread will exit
+        // without doing anything useful.
         match receiver.recv_timeout(short_timeout) {
             Ok(curr_link) => {
                 last_work_time = std::time::Instant::now(); // Reset idle timer
