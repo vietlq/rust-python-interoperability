@@ -1,4 +1,4 @@
-mod threaded_crawler;
+mod thread_crawler;
 mod utils;
 
 use anyhow::Result;
@@ -74,7 +74,8 @@ pub fn site_map<'py>(
         let max_links = 200;
         let max_wait_time_s = 30;
         let max_concurrency = 8;
-        threaded_crawler::ThreadCrawler::build_site_map(
+
+        thread_crawler::ThreadCrawler::build_site_map(
             &start_from,
             max_links,
             max_wait_time_s,
