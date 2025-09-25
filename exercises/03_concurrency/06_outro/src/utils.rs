@@ -16,10 +16,9 @@ pub fn extract_links_from_element(
     html_doc: &scraper::Html,
     curr_link: &str,
     orig_domain: &str,
-    sub_site_map: &mut HashSet<String>,
     element: &str,
     attr: &str,
-) -> Result<()> {
+) -> Result<HashSet<String>> {
     info!(
         "[Thread {}] extracting links from <{} {}='...'>",
         tid, element, attr
@@ -28,34 +27,32 @@ pub fn extract_links_from_element(
     let selector =
         scraper::Selector::parse(element).map_err(|e| log_error!("Bad selector: {:?}", e))?;
 
+    let mut sub_site_map: HashSet<String> = HashSet::new();
+
     for link_obj in html_doc.select(&selector) {
-        let link = link_obj
-            .value()
-            .attr(attr)
-            .ok_or_else(|| log_error!("Invalid attribute {}: {:?}", attr, link_obj))?;
+        if let Some(link) = link_obj.value().attr(attr) {
+            if let Some(resolved_link) = resolve_link(&curr_link, link) {
+                info!("[Thread {}] resolved_link = {}", tid, resolved_link);
 
-        let resolved_link = resolve_link(&curr_link, link)
-            .ok_or_else(|| log_error!("Could not resolve link {}", link))?;
+                if let Some(link_domain) = get_orig_domain(&resolved_link) {
+                    if link_domain == *orig_domain {
+                        info!(
+                            "[Thread {}] adding the resolved_link = {}",
+                            tid, resolved_link
+                        );
+                        sub_site_map.insert(resolved_link.to_string());
+                    }
 
-        let link_domain =
-            get_orig_domain(&resolved_link).ok_or_else(|| log_error!("Bad link: {}", link))?;
-        info!("[Thread {}] resolved_link = {}", tid, resolved_link);
-
-        if link_domain == *orig_domain {
-            info!(
-                "[Thread {}] adding the resolved_link = {}",
-                tid, resolved_link
-            );
-            sub_site_map.insert(resolved_link.to_string());
+                    info!(
+                        "[Thread {}] finished extracting links from <a href='...'>",
+                        tid
+                    );
+                }
+            };
         }
-
-        info!(
-            "[Thread {}] finished extracting links from <a href='...'>",
-            tid
-        );
     }
 
-    Ok(())
+    Ok(sub_site_map)
 }
 
 pub fn get_orig_domain(url_str: &str) -> Option<String> {

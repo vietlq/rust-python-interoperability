@@ -131,45 +131,37 @@ fn extract_links_from(
                         match response.text() {
                             Ok(html_text) => {
                                 let html_doc = scraper::Html::parse_document(&html_text);
-                                let mut sub_site_map: HashSet<String> = HashSet::new();
 
-                                for (element, attr) in vec![("a", "href"), ("iframe", "src")] {
-                                    info!(
-                                        "[Thread {}] ^^^ the size of sub_site_map BEFORE extraction from element {}: {}",
-                                        tid, element, sub_site_map.len()
-                                    );
+                                vec![("a", "href"), ("iframe", "src")].iter().for_each(
+                                    |(element, attr)| {
+                                        let sub_site_map = extract_links_from_element(
+                                            tid,
+                                            &html_doc,
+                                            &curr_link,
+                                            orig_domain,
+                                            element,
+                                            attr,
+                                        )
+                                        .expect(&format!(
+                                            "Could not extract links from {}[{}]",
+                                            &element, &attr
+                                        ));
 
-                                    let _ = extract_links_from_element(
-                                        tid,
-                                        &html_doc,
-                                        &curr_link,
-                                        orig_domain,
-                                        &mut sub_site_map,
-                                        element,
-                                        attr,
-                                    );
-
-                                    info!(
-                                        "[Thread {}] $$$ the size of sub_site_map AFTER extraction from element {}: {}",
-                                        tid,
-                                        element,
-                                        sub_site_map.len(),
-                                    );
-                                }
-
-                                // Process discovered links
-                                for new_link in sub_site_map {
-                                    if !visited.contains(&new_link)
-                                        && !rs_site_map.contains(&new_link)
-                                    {
-                                        info!(
-                                            "[Thread {}] >>> queuing the link {}",
-                                            tid, &new_link
-                                        );
-                                        let _ = sender.send(new_link.clone());
-                                    }
-                                    rs_site_map.insert(new_link);
-                                }
+                                        // Process discovered links
+                                        for new_link in &sub_site_map {
+                                            if !visited.contains(new_link)
+                                                && !rs_site_map.contains(new_link)
+                                            {
+                                                info!(
+                                                    "[Thread {}] >>> queuing the link {}",
+                                                    tid, &new_link
+                                                );
+                                                let _ = sender.send(new_link.clone());
+                                            }
+                                            rs_site_map.insert(new_link.clone());
+                                        }
+                                    },
+                                );
 
                                 visited.insert(curr_link.to_string());
                                 info!(
