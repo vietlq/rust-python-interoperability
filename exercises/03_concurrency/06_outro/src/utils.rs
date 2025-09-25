@@ -38,7 +38,7 @@ pub fn extract_links_from_element(
 
                     info!("finished extracting links from <a href='...'>");
                 }
-            };
+            }
         }
     }
 

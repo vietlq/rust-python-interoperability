@@ -83,9 +83,11 @@ fn build_site_map(
     rs_site_map.iter().for_each(|x| {
         result.insert(x.to_string());
     });
+
     Ok(result)
 }
 
+// NOTE: The variables `rs_site_map` and `visited` will be written to
 fn extract_links_from(
     orig_domain: &str,
     sender: Sender<String>,
@@ -111,8 +113,6 @@ fn extract_links_from(
         // without doing anything useful.
         match receiver.recv_timeout(short_timeout) {
             Ok(curr_link) => {
-                last_work_time = std::time::Instant::now(); // Reset idle timer
-
                 if rs_site_map.len() >= max_links {
                     return Ok(());
                 }
@@ -173,6 +173,11 @@ fn extract_links_from(
                         error!("Failed to fetch {}: {}", curr_link, e);
                     }
                 }
+
+                // We need to reset the idle timer as the last step of `Ok`,
+                // just in case the work took too much time.
+                // Otherwise, if there's no new link yet, this thread will exit.
+                last_work_time = std::time::Instant::now();
             }
             Err(RecvTimeoutError::Timeout) => {
                 // Check if we should continue waiting or exit
