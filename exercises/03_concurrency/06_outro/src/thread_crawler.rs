@@ -60,7 +60,6 @@ fn build_site_map(
             .name(format!("crawler-{}", tid))
             .spawn(move || {
                 let _ = extract_links_from(
-                    tid,
                     &orig_domain,
                     sender,
                     receiver,
@@ -88,7 +87,6 @@ fn build_site_map(
 }
 
 fn extract_links_from(
-    tid: u64,
     orig_domain: &str,
     sender: Sender<String>,
     receiver: Receiver<String>,
@@ -103,7 +101,7 @@ fn extract_links_from(
 
     loop {
         if rs_site_map.len() >= max_links {
-            info!("[Thread {}] Reached max_links {}, exiting", tid, max_links);
+            info!("Reached max_links {}, exiting", max_links);
             return Ok(());
         }
 
@@ -120,11 +118,11 @@ fn extract_links_from(
                 }
 
                 if visited.contains(&curr_link) {
-                    info!("[Thread {}] Already visited {}, skipping", tid, curr_link);
+                    info!("Already visited {}, skipping", curr_link);
                     continue;
                 }
 
-                info!("[Thread {}] <<< processing the link {}", tid, curr_link);
+                info!("<<< processing the link {}", curr_link);
 
                 match reqwest::blocking::get(&curr_link) {
                     Ok(response) => {
@@ -135,7 +133,6 @@ fn extract_links_from(
                                 vec![("a", "href"), ("iframe", "src")].iter().for_each(
                                     |(element, attr)| {
                                         let sub_site_map = extract_links_from_element(
-                                            tid,
                                             &html_doc,
                                             &curr_link,
                                             orig_domain,
@@ -152,10 +149,7 @@ fn extract_links_from(
                                             if !visited.contains(new_link)
                                                 && !rs_site_map.contains(new_link)
                                             {
-                                                info!(
-                                                    "[Thread {}] >>> queuing the link {}",
-                                                    tid, &new_link
-                                                );
+                                                info!(">>> queuing the link {}", &new_link);
                                                 let _ = sender.send(new_link.clone());
                                             }
                                             rs_site_map.insert(new_link.clone());
@@ -165,48 +159,43 @@ fn extract_links_from(
 
                                 visited.insert(curr_link.to_string());
                                 info!(
-                                    "[Thread {}] **processed** the link {} (total discovered: {})",
-                                    tid,
+                                    "**processed** the link {} (total discovered: {})",
                                     curr_link,
                                     rs_site_map.len()
                                 );
                             }
                             Err(e) => {
-                                error!(
-                                    "[Thread {}] Failed to read response text from {}: {}",
-                                    tid, curr_link, e
-                                );
+                                error!("Failed to read response text from {}: {}", curr_link, e);
                             }
                         }
                     }
                     Err(e) => {
-                        error!("[Thread {}] Failed to fetch {}: {}", tid, curr_link, e);
+                        error!("Failed to fetch {}: {}", curr_link, e);
                     }
                 }
             }
             Err(RecvTimeoutError::Timeout) => {
                 // Check if we should continue waiting or exit
                 if rs_site_map.len() >= max_links {
-                    info!("[Thread {}] Reached max_links on timeout, exiting", tid);
+                    info!("Reached max_links on timeout, exiting");
                     return Ok(());
                 }
 
                 // Check if we've been idle too long
                 if last_work_time.elapsed() > max_idle_time {
-                    info!("[Thread {}] Idle timeout reached, exiting", tid);
+                    info!("Idle timeout reached, exiting");
                     return Ok(());
                 }
 
                 // Continue waiting for work
                 debug!(
-                    "[Thread {}] Waiting for work... (idle for {:?})",
-                    tid,
+                    "Waiting for work... (idle for {:?})",
                     last_work_time.elapsed()
                 );
                 continue;
             }
             Err(RecvTimeoutError::Disconnected) => {
-                info!("[Thread {}] Channel disconnected, exiting", tid);
+                info!("Channel disconnected, exiting");
                 return Ok(());
             }
         }

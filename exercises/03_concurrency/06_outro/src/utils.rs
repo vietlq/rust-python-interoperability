@@ -12,17 +12,13 @@ macro_rules! log_error {
 }
 
 pub fn extract_links_from_element(
-    tid: u64,
     html_doc: &scraper::Html,
     curr_link: &str,
     orig_domain: &str,
     element: &str,
     attr: &str,
 ) -> Result<HashSet<String>> {
-    info!(
-        "[Thread {}] extracting links from <{} {}='...'>",
-        tid, element, attr
-    );
+    info!("extracting links from <{} {}='...'>", element, attr);
 
     let selector =
         scraper::Selector::parse(element).map_err(|e| log_error!("Bad selector: {:?}", e))?;
@@ -32,21 +28,15 @@ pub fn extract_links_from_element(
     for link_obj in html_doc.select(&selector) {
         if let Some(link) = link_obj.value().attr(attr) {
             if let Some(resolved_link) = resolve_link(&curr_link, link) {
-                info!("[Thread {}] resolved_link = {}", tid, resolved_link);
+                info!("resolved_link = {}", resolved_link);
 
                 if let Some(link_domain) = get_orig_domain(&resolved_link) {
                     if link_domain == *orig_domain {
-                        info!(
-                            "[Thread {}] adding the resolved_link = {}",
-                            tid, resolved_link
-                        );
+                        info!("adding the resolved_link = {}", resolved_link);
                         sub_site_map.insert(resolved_link.to_string());
                     }
 
-                    info!(
-                        "[Thread {}] finished extracting links from <a href='...'>",
-                        tid
-                    );
+                    info!("finished extracting links from <a href='...'>");
                 }
             };
         }
