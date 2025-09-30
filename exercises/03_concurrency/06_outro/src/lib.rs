@@ -8,6 +8,8 @@ use tracing::{debug, error, info};
 use tracing_subscriber;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
+use crate::utils::get_orig_domain;
+
 #[pyfunction]
 /// Given a starting URL (`start_from`), discover all the URLs *on the same domain*
 /// that can be reached by following links from the starting URL.
@@ -75,12 +77,14 @@ pub fn site_map<'py>(
         let max_wait_time_s = 30;
         let max_concurrency = 8;
 
-        thread_crawler::ThreadCrawler::build_site_map(
+        let result = thread_crawler::ThreadCrawler::build_site_map(
             &start_from,
             max_links,
             max_wait_time_s,
             max_concurrency,
-        )
+        );
+
+        result
     });
 
     // Convert the Result to PyResult
