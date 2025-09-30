@@ -1,30 +1,26 @@
-/*
-* Usage:
-{
+use anyhow::Result;
+use std::collections::HashSet;
+use tracing::{debug, error, info};
+
+use crate::utils::get_orig_domain;
+
+pub fn build_site_map_proper_timeout_using_async(
+    start_from: &str,
+    max_links: usize,
+    max_wait_time_s: u64,
+    max_concurrency: u64,
+) -> Result<HashSet<String>> {
     use tokio::runtime::Runtime;
 
     let rt = Runtime::new()?;
 
-    let _ = rt.block_on(build_site_map_proper_timeout(
+    rt.block_on(build_site_map_proper_timeout(
         &start_from,
         max_links,
         max_wait_time_s,
         max_concurrency,
-    ));
+    ))
 }
-*/
-
-mod thread_crawler;
-mod utils;
-
-use anyhow::Result;
-use pyo3::{prelude::*, types::PySet};
-use std::collections::HashSet;
-use tracing::{debug, error, info};
-use tracing_subscriber;
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
-
-use crate::utils::get_orig_domain;
 
 async fn build_site_map_proper_timeout(
     start_from: &str,
@@ -32,12 +28,11 @@ async fn build_site_map_proper_timeout(
     max_wait_time_s: u64,
     max_concurrency: u64,
 ) -> Result<HashSet<String>> {
-    use crate::utils::get_orig_domain;
     use dashmap::DashSet;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
     use tokio::sync::{mpsc, Semaphore};
-    use tokio::task::JoinSet;
+    // use tokio::task::JoinSet;
 
     info!("Inside async function!");
 
